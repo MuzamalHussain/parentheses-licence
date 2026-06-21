@@ -1,0 +1,55 @@
+# Local development / staging stack. For production, point MONGO_URI at a
+# real MongoDB Atlas cluster instead of the bundled mongo service, and put
+# the API + frontend behind a real reverse proxy with TLS.
+version: "3.8"
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override DB/Redis host to point at the compose services above,
+      # regardless of what's in .env (useful for local docker-compose runs)
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB_NAME=Personal-Crowal
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - plugin_uploads:/app/uploads/plugins
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:5000/api/v1
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
+  plugin_uploads:
