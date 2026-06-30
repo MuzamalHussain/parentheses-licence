@@ -41,6 +41,12 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-paymentSchema.index({ gateway: 1, gatewayTransactionId: 1 });
+paymentSchema.index(
+  { gateway: 1, gatewayTransactionId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { gatewayTransactionId: { $type: "string", $gt: "" } },
+  }
+);
 
 module.exports = mongoose.model("Payment", paymentSchema);

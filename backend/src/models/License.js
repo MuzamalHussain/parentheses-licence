@@ -78,6 +78,13 @@ const licenseSchema = new mongoose.Schema(
 licenseSchema.index({ userId: 1, status: 1 });
 licenseSchema.index({ productId: 1, status: 1 });
 licenseSchema.index({ expiresAt: 1 }, { sparse: true });
+licenseSchema.index(
+  { orderId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { orderId: { $type: "objectId" } },
+  }
+);
 
 // Virtual: number of used sites
 licenseSchema.virtual("usedSites").get(function () {

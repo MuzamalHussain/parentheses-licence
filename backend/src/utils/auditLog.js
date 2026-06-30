@@ -11,10 +11,11 @@ const AuditLog = require("../models/AuditLog");
  * @param {*}           opts.targetId
  * @param {object}      opts.metadata - any extra data to store
  * @param {string}      opts.ip       - request IP
+ * @param {object}      opts.session  - optional MongoDB transaction session
  */
-async function writeAuditLog({ actor = null, action, targetType = "", targetId = null, metadata = {}, ip = "" }) {
+async function writeAuditLog({ actor = null, action, targetType = "", targetId = null, metadata = {}, ip = "", session = null }) {
   try {
-    await AuditLog.create({
+    const entry = {
       actorId:    actor?._id   || null,
       actorRole:  actor?.role  || "system",
       actorEmail: actor?.email || "",
@@ -23,7 +24,12 @@ async function writeAuditLog({ actor = null, action, targetType = "", targetId =
       targetId,
       metadata,
       ipAddress: ip,
-    });
+    };
+    if (session) {
+      await AuditLog.create([entry], { session });
+    } else {
+      await AuditLog.create(entry);
+    }
   } catch (err) {
     console.error("[AuditLog] Write failed:", err.message);
   }

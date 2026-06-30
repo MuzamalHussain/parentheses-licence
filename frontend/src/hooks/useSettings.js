@@ -14,6 +14,12 @@ export const useFeatureFlags = () =>
     queryFn: () => api.get("/admin/settings/feature-flags").then((r) => r.data.data),
   });
 
+export const usePaymentProviders = () =>
+  useQuery({
+    queryKey: ["payment-providers"],
+    queryFn: () => api.get("/admin/settings/payment-providers").then((r) => r.data.data),
+  });
+
 export const useUpdateSetting = () => {
   const qc = useQueryClient();
   return useMutation({

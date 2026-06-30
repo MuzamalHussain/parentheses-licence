@@ -2,6 +2,7 @@ const asyncHandler = require("express-async-handler");
 const License = require("../models/License");
 const LicenseActivation = require("../models/LicenseActivation");
 const { AppError } = require("../utils/errorHandler");
+const { normalizeDomain, isValidDomain } = require("../utils/domain");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/admin/domains
@@ -136,15 +137,18 @@ exports.forceDeactivateDomain = asyncHandler(async (req, res) => {
   const license = await License.findById(req.params.licenseId);
   if (!license) throw new AppError("License not found.", 404);
 
-  const domainLower = domain.toLowerCase().trim();
-  const idx = license.activeDomains.findIndex((d) => d.domain === domainLower);
-  if (idx === -1) throw new AppError("Domain is not activated on this license.", 404);
+  const domainLower = normalizeDomain(domain);
+  if (!isValidDomain(domainLower)) throw new AppError("Invalid domain format.", 422);
 
-  license.activeDomains.splice(idx, 1);
-  await license.save();
+  const updatedLicense = await License.findOneAndUpdate(
+    { _id: license._id, "activeDomains.domain": domainLower },
+    { $pull: { activeDomains: { domain: domainLower } } },
+    { new: true }
+  );
+  if (!updatedLicense) throw new AppError("Domain is not activated on this license.", 404);
 
   await LicenseActivation.create({
-    licenseId: license._id,
+    licenseId: updatedLicense._id,
     domain: domainLower,
     action: "deactivate",
     actorId: req.user._id,
@@ -156,9 +160,9 @@ exports.forceDeactivateDomain = asyncHandler(async (req, res) => {
   const { writeAuditLog } = require("../utils/auditLog");
   await writeAuditLog({
     actor: req.user, action: "domain.force_deactivated",
-    targetType: "License", targetId: license._id,
-    metadata: { licenseKey: license.licenseKey, domain: domainLower }, ip: req.ip,
+    targetType: "License", targetId: updatedLicense._id,
+    metadata: { licenseKey: updatedLicense.licenseKey, domain: domainLower }, ip: req.ip,
   });
 
-  res.json({ success: true, message: `Domain ${domainLower} force-deactivated.`, data: license });
+  res.json({ success: true, message: `Domain ${domainLower} force-deactivated.`, data: updatedLicense });
 });

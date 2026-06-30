@@ -6,6 +6,7 @@ const { AppError } = require("../utils/errorHandler");
 const { computeCheckoutAmount } = require("../services/paymentService");
 const { createCheckoutSession } = require("../services/stripeService");
 const { createLocalCheckout } = require("../services/localPspService");
+const { assertProviderOperational } = require("../services/paymentProviderStatus");
 const { getConfig } = require("../config/env");
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,6 +21,8 @@ exports.createCheckout = asyncHandler(async (req, res) => {
   if (!["stripe", "local"].includes(gateway)) {
     throw new AppError("gateway must be 'stripe' or 'local'.", 422);
   }
+
+  assertProviderOperational(gateway);
 
   const [product, plan] = await Promise.all([
     Product.findById(productId),

@@ -1,6 +1,10 @@
 const { verifyWebhookSignature } = require("../services/localPspService");
 const { confirmOrderPaid } = require("../services/paymentService");
-const { recordWebhookEvent, markWebhookProcessed } = require("../utils/webhookGuard");
+const {
+  beginWebhookProcessing,
+  markWebhookProcessed,
+  markWebhookFailed,
+} = require("../utils/webhookGuard");
 const Order = require("../models/Order");
 
 /**
@@ -40,14 +44,14 @@ async function handleLocalPspWebhook(req, res) {
   const eventId = payload.event_id || `${payload.transaction_id}-${payload.status}`;
 
   // ── Idempotency guard ─────────────────────────────────────────────────────────
-  const { isNew } = await recordWebhookEvent({
+  const { shouldProcess } = await beginWebhookProcessing({
     gateway: "local",
     eventId,
     eventType: payload.event_type || "",
     payload,
   });
 
-  if (!isNew) {
+  if (!shouldProcess) {
     return res.json({ received: true, duplicate: true });
   }
 
@@ -75,7 +79,7 @@ async function handleLocalPspWebhook(req, res) {
     res.json({ received: true });
   } catch (err) {
     console.error("[Local PSP Webhook] Processing error:", err.message);
-    await markWebhookProcessed("local", eventId, err.message);
+    await markWebhookFailed("local", eventId, err.message);
     res.status(500).json({ success: false, message: "Webhook processing failed." });
   }
 }

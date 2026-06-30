@@ -18,6 +18,7 @@ const secretValueSchema = z.object({
 
 router.get("/", c.getSettings);
 router.get("/feature-flags", c.getFeatureFlags);
+router.get("/payment-providers", c.getPaymentProviders);
 router.patch("/:key", validate(settingValueSchema), c.updateSetting);
 router.patch("/:key/secret", validate(secretValueSchema), c.updateSecretSetting);
 

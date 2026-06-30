@@ -25,9 +25,19 @@ const webhookEventSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    status: {
+      type: String,
+      enum: ["processing", "processed", "failed"],
+      default: "processing",
+      index: true,
+    },
     processed: {
       type: Boolean,
       default: false,
+    },
+    processedAt: {
+      type: Date,
+      default: null,
     },
     processingError: {
       type: String,

@@ -101,6 +101,7 @@ app.use("/api/v1/admin/audit",         require("./routes/adminAudit"));
 app.use("/api/v1/admin/settings",      require("./routes/adminSettings"));
 app.use("/api/v1/licenses",            require("./routes/customerLicenses"));
 app.use("/api/v1/plugin",              require("./routes/plugin"));
+app.use("/api/wp/updater",             require("./routes/wpUpdater"));
 app.use("/api/v1",                     require("./routes/customerDownloads"));
 app.use("/api/v1/orders",              require("./routes/orders"));
 app.use("/api/v1/support",             require("./routes/support"));

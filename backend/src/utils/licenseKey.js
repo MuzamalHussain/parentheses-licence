@@ -30,10 +30,11 @@ function generateLicenseKey() {
  * Generates a unique key, retrying up to maxAttempts if a collision is found.
  * Pass the License model to check for uniqueness.
  */
-async function generateUniqueLicenseKey(LicenseModel, maxAttempts = 10) {
+async function generateUniqueLicenseKey(LicenseModel, maxAttempts = 10, options = {}) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const key = generateLicenseKey();
-    const exists = await LicenseModel.exists({ licenseKey: key });
+    const query = LicenseModel.exists({ licenseKey: key });
+    const exists = options.session ? await query.session(options.session) : await query;
     if (!exists) return key;
   }
   throw new Error("Failed to generate a unique license key after max attempts.");

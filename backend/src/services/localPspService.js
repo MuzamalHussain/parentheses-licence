@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const axios = require("axios");
 const { getConfig } = require("../config/env");
+const { assertProviderOperational } = require("./paymentProviderStatus");
 
 /**
  * GENERIC adapter for a Pakistan-compatible PSP aggregator
@@ -33,6 +34,7 @@ function localPspConfig() {
  * Returns { checkoutId, checkoutUrl }.
  */
 async function createLocalCheckout({ order, productName, planName, successUrl, cancelUrl, customerEmail, customerName }) {
+  assertProviderOperational("local");
   const config = localPspConfig();
   const payload = {
     merchant_id: config.merchantId,

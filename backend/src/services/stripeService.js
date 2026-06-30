@@ -1,5 +1,6 @@
 const Stripe = require("stripe");
 const { getConfig } = require("../config/env");
+const { assertProviderOperational } = require("./paymentProviderStatus");
 
 let stripeClient = null;
 function getStripe() {
@@ -18,6 +19,7 @@ function getStripe() {
  * Order amount is already in major units (e.g. dollars) — Stripe wants cents.
  */
 async function createCheckoutSession({ order, productName, planName, successUrl, cancelUrl, customerEmail }) {
+  assertProviderOperational("stripe");
   const stripe = getStripe();
 
   const session = await stripe.checkout.sessions.create({

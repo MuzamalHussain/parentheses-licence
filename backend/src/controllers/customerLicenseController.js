@@ -2,6 +2,7 @@ const asyncHandler = require("express-async-handler");
 const License = require("../models/License");
 const LicenseActivation = require("../models/LicenseActivation");
 const { AppError } = require("../utils/errorHandler");
+const { normalizeDomain, isValidDomain } = require("../utils/domain");
 
 const populateLicense = (query) =>
   query
@@ -60,22 +61,25 @@ exports.deactivateDomain = asyncHandler(async (req, res) => {
   if (!license) throw new AppError("License not found.", 404);
   if (license.status !== "active") throw new AppError("Only active licenses can be modified.", 400);
 
-  const domainLower = domain.toLowerCase().trim();
-  const idx = license.activeDomains.findIndex((d) => d.domain === domainLower);
-  if (idx === -1) throw new AppError("Domain is not activated on this license.", 404);
+  const domainLower = normalizeDomain(domain);
+  if (!isValidDomain(domainLower)) throw new AppError("Invalid domain format.", 422);
 
-  license.activeDomains.splice(idx, 1);
-  await license.save();
+  const updatedLicense = await License.findOneAndUpdate(
+    { _id: license._id, userId: req.user._id, "activeDomains.domain": domainLower },
+    { $pull: { activeDomains: { domain: domainLower } } },
+    { new: true }
+  );
+  if (!updatedLicense) throw new AppError("Domain is not activated on this license.", 404);
 
   await LicenseActivation.create({
-    licenseId: license._id,
+    licenseId: updatedLicense._id,
     domain: domainLower,
     action: "deactivate",
     actorId: req.user._id,
     actorRole: "customer",
   });
 
-  res.json({ success: true, message: "Domain deactivated. Slot is now free.", data: license });
+  res.json({ success: true, message: "Domain deactivated. Slot is now free.", data: updatedLicense });
 });
 
 // GET /api/v1/licenses/summary — stats for customer dashboard cards

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Loader2, Save, Settings, ShieldCheck } from "lucide-react";
 import { Alert, Button, Input } from "../../components/ui";
-import { useAdminSettings, useFeatureFlags, useUpdateSetting } from "../../hooks/useSettings";
+import { useAdminSettings, useFeatureFlags, usePaymentProviders, useUpdateSetting } from "../../hooks/useSettings";
 
 const groupOrder = ["General", "Licensing", "Downloads", "Payments", "Email", "Security", "WordPress Updater", "Maintenance"];
 
@@ -125,6 +125,57 @@ function FeatureFlagsSection() {
   );
 }
 
+function providerBadgeClass(label) {
+  if (label === "Operational") return "bg-green-50 text-green-700";
+  if (label === "Disabled") return "bg-gray-100 text-gray-600";
+  if (label === "Adapter Missing" || label === "Coming Soon") return "bg-amber-50 text-amber-700";
+  return "bg-red-50 text-red-700";
+}
+
+function PaymentProvidersSection() {
+  const { data: providers = [], isLoading, error } = usePaymentProviders();
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h2 className="font-semibold text-gray-900">Payment Provider Status</h2>
+      </div>
+      {isLoading ? (
+        <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-500" /></div>
+      ) : error ? (
+        <div className="p-5"><Alert message={error.response?.data?.message || "Could not load payment provider status."} /></div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {providers.map((provider) => (
+            <div key={provider.id} className="grid lg:grid-cols-[1fr_360px] gap-4 px-5 py-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-sm text-gray-900">{provider.name}</p>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${providerBadgeClass(provider.label)}`}>
+                    {provider.label}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">{provider.reason}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <span className={`font-semibold px-2.5 py-2 rounded ${provider.enabled ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                  {provider.enabled ? "Enabled" : "Disabled"}
+                </span>
+                <span className={`font-semibold px-2.5 py-2 rounded ${provider.configured ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                  {provider.configured ? "Configured" : "Not Configured"}
+                </span>
+                <span className={`font-semibold px-2.5 py-2 rounded ${provider.operational ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                  {provider.operational ? "Operational" : "Unavailable"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function AdminSettings() {
   const { data, isLoading, error } = useAdminSettings();
 
@@ -152,6 +203,7 @@ export default function AdminSettings() {
         <SettingsGroup key={group} title={group} settings={data?.[group] || []} />
       ))}
 
+      <PaymentProvidersSection />
       <FeatureFlagsSection />
     </div>
   );

@@ -34,6 +34,18 @@ const downloadSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    purpose: {
+      type: String,
+      enum: ["customer_download", "wordpress_update"],
+      default: "customer_download",
+      index: true,
+    },
+    domain: {
+      type: String,
+      default: "",
+      lowercase: true,
+      trim: true,
+    },
     ipAddress: {
       type: String,
       default: "",
