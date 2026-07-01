@@ -25,11 +25,14 @@ async function main() {
   let user = await User.findOne({ email });
 
   if (user) {
+    user.passwordHash = await bcrypt.hash(password, 12);
     user.role = "admin";
     user.emailVerified = true;
     user.isActive = true;
+
     await user.save({ validateBeforeSave: false });
-    console.log(`Existing user ${email} promoted to admin.`);
+
+    console.log(`Existing user ${email} password reset and promoted to admin.`);
   } else {
     const passwordHash = await bcrypt.hash(password, 12);
     user = await User.create({
