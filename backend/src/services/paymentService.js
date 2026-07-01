@@ -6,7 +6,7 @@ const Plan = require("../models/Plan");
 const Coupon = require("../models/Coupon");
 const { generateUniqueLicenseKey } = require("../utils/licenseKey");
 const { writeAuditLog } = require("../utils/auditLog");
-const { sendEmail, emailTemplates } = require("../utils/email");
+const notificationService = require("./notificationService");
 
 function normalizeGatewayTransactionId(orderId, paymentDetails) {
   return paymentDetails.gatewayTransactionId || `order:${orderId.toString()}`;
@@ -30,16 +30,12 @@ async function notifyLicenseIssued({ order, license, paymentDetails }) {
     ]);
     if (!user) return;
 
-    const tmpl = emailTemplates.licenseIssued
-      ? emailTemplates.licenseIssued(user.name, license.licenseKey, product?.name || "your plugin")
-      : {
-          subject: `Your license key for ${product?.name || "your purchase"}`,
-          html: `<p>Hi ${user.name},</p><p>Thanks for your purchase! Your license key is:</p>
-                 <p style="font-family:monospace;font-size:18px;font-weight:bold;">${license.licenseKey}</p>
-                 <p>You can view and manage it anytime from your dashboard.</p>`,
-        };
-
-    await sendEmail({ to: user.email, ...tmpl });
+    await notificationService.sendLicensePurchasedEmail({
+      to: user.email,
+      name: user.name,
+      licenseKey: license.licenseKey,
+      productName: product?.name || "your plugin",
+    });
   } catch (err) {
     console.error("[Payments] License email failed:", {
       orderId: order._id?.toString(),

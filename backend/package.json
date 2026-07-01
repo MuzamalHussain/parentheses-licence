@@ -7,11 +7,14 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node tests/phase7b-webhook-reliability.test.js && node tests/phase7c-payment-transaction-safety.test.js && node tests/phase7d-license-activation-race.test.js && node tests/phase7e-psp-gateway-hardening.test.js && node tests/phase7f-wordpress-updater-flow.test.js",
+    "test": "node tests/phase7b-webhook-reliability.test.js && node tests/phase7c-payment-transaction-safety.test.js && node tests/phase7d-license-activation-race.test.js && node tests/phase7e-psp-gateway-hardening.test.js && node tests/phase7f-wordpress-updater-flow.test.js && node tests/phase7g-plugin-upload-security.test.js && node tests/phase7h-auth-session-security.test.js && node tests/phase7i-notification-infrastructure.test.js",
     "test:phase7b": "node tests/phase7b-webhook-reliability.test.js",
     "test:phase7d": "node tests/phase7d-license-activation-race.test.js",
     "test:phase7e": "node tests/phase7e-psp-gateway-hardening.test.js",
     "test:phase7f": "node tests/phase7f-wordpress-updater-flow.test.js",
+    "test:phase7g": "node tests/phase7g-plugin-upload-security.test.js",
+    "test:phase7h": "node tests/phase7h-auth-session-security.test.js",
+    "test:phase7i": "node tests/phase7i-notification-infrastructure.test.js",
     "check:phase7c-indexes": "node scripts/check-phase7c-duplicates.js"
   },
   "dependencies": {

@@ -57,6 +57,30 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    refreshSessions: {
+      type: [
+        {
+          sessionId: { type: String, required: true },
+          tokenHash: { type: String, required: true },
+          expiresAt: { type: Date, required: true },
+          createdAt: { type: Date, default: Date.now },
+          lastUsedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+      select: false,
+    },
+
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
+    loginLockedUntil: {
+      type: Date,
+      select: false,
+    },
+
     // Schema is 2FA-ready; the actual TOTP/SMS verification flow is post-MVP.
     twoFactorEnabled: {
       type: Boolean,

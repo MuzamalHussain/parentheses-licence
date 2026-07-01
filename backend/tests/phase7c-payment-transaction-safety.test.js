@@ -206,15 +206,10 @@ function createHarness(options = {}) {
     },
   };
 
-  const emailMock = {
-    emailTemplates: {
-      licenseIssued: (name, licenseKey, productName) => ({
-        subject: `${productName} license`,
-        html: `${name}:${licenseKey}`,
-      }),
-    },
-    sendEmail: async (message) => {
+  const notificationServiceMock = {
+    sendLicensePurchasedEmail: async (message) => {
       store.emails.push(message);
+      return { success: true };
     },
   };
 
@@ -230,7 +225,7 @@ function createHarness(options = {}) {
       UserMock,
       ProductMock,
       auditLogMock,
-      emailMock,
+      notificationServiceMock,
     },
   };
 }
@@ -248,7 +243,7 @@ function loadPaymentService(harness) {
     ["src/models/User.js", harness.mocks.UserMock],
     ["src/models/Product.js", harness.mocks.ProductMock],
     ["src/utils/auditLog.js", harness.mocks.auditLogMock],
-    ["src/utils/email.js", harness.mocks.emailMock],
+    ["src/services/notificationService.js", harness.mocks.notificationServiceMock],
   ];
 
   for (const [relativePath, exports] of mappings) {

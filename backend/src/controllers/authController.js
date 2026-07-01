@@ -4,11 +4,106 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require("../utils/jwt");
 const { AppError } = require("../utils/errorHandler");
-const { sendEmail, emailTemplates } = require("../utils/email");
+const notificationService = require("../services/notificationService");
 const { getConfig } = require("../config/env");
 
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("InvalidPassword123", 12);
+
+function parseDurationMs(value, fallbackMs) {
+  const match = String(value || "").trim().match(/^(\d+)(ms|s|m|h|d)?$/i);
+  if (!match) return fallbackMs;
+  const amount = Number(match[1]);
+  const unit = (match[2] || "ms").toLowerCase();
+  const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+  return amount * multipliers[unit];
+}
+
+function refreshCookieOptions() {
+  const config = getConfig();
+  return {
+    httpOnly: true,
+    secure: config.app.isProduction,
+    sameSite: "strict",
+    maxAge: parseDurationMs(config.auth.refreshExpires, 7 * 24 * 60 * 60 * 1000),
+  };
+}
+
+function clearRefreshCookie(res) {
+  const options = refreshCookieOptions();
+  res.clearCookie("refreshToken", {
+    httpOnly: options.httpOnly,
+    secure: options.secure,
+    sameSite: options.sameSite,
+  });
+}
+
+function isLoginLocked(user) {
+  return Boolean(user.loginLockedUntil && new Date(user.loginLockedUntil) > new Date());
+}
+
+async function registerFailedLogin(user, email) {
+  if (!user) {
+    await bcrypt.compare("invalid-password", DUMMY_PASSWORD_HASH);
+    console.warn("[Auth] Failed login", { email, reason: "invalid_credentials" });
+    return;
+  }
+
+  const config = getConfig();
+  const failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+  user.failedLoginAttempts = failedLoginAttempts;
+
+  if (failedLoginAttempts >= config.auth.maxFailedLoginAttempts) {
+    user.loginLockedUntil = new Date(Date.now() + config.auth.loginLockoutMinutes * 60 * 1000);
+    console.warn("[Auth] Login locked", { userId: user._id, failedLoginAttempts });
+  } else {
+    console.warn("[Auth] Failed login", { userId: user._id, reason: "invalid_credentials", failedLoginAttempts });
+  }
+
+  await user.save({ validateBeforeSave: false });
+}
+
+function pruneRefreshSessions(user) {
+  const now = Date.now();
+  const maxSessions = getConfig().auth.maxRefreshSessions;
+  user.refreshSessions = (user.refreshSessions || [])
+    .filter((session) => session.expiresAt && new Date(session.expiresAt).getTime() > now)
+    .sort((a, b) => new Date(b.lastUsedAt || b.createdAt) - new Date(a.lastUsedAt || a.createdAt))
+    .slice(0, maxSessions);
+}
+
+function issueRefreshSession(user, payload, existingSessionId = null) {
+  const sessionId = existingSessionId || crypto.randomBytes(24).toString("hex");
+  const refreshToken = signRefreshToken({ ...payload, nonce: crypto.randomBytes(16).toString("hex") }, { jwtid: sessionId });
+  const decoded = verifyRefreshToken(refreshToken);
+  const expiresAt = new Date(decoded.exp * 1000);
+  const session = {
+    sessionId,
+    tokenHash: hashToken(refreshToken),
+    expiresAt,
+    createdAt: existingSessionId ? undefined : new Date(),
+    lastUsedAt: new Date(),
+  };
+
+  pruneRefreshSessions(user);
+  const sessions = user.refreshSessions || [];
+  const existingIndex = sessions.findIndex((item) => item.sessionId === sessionId);
+  if (existingIndex >= 0) {
+    sessions[existingIndex].tokenHash = session.tokenHash;
+    sessions[existingIndex].expiresAt = session.expiresAt;
+    sessions[existingIndex].lastUsedAt = session.lastUsedAt;
+  } else {
+    sessions.unshift(session);
+  }
+  user.refreshSessions = sessions.slice(0, getConfig().auth.maxRefreshSessions);
+
+  return refreshToken;
+}
+
+function revokeRefreshSession(user, sessionId) {
+  user.refreshSessions = (user.refreshSessions || []).filter((session) => session.sessionId !== sessionId);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/auth/register
@@ -35,14 +130,8 @@ exports.register = asyncHandler(async (req, res) => {
     emailVerificationExpires: expires,
   });
 
-  // Send verification email (non-blocking — don't fail registration if email fails)
-  try {
-    const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
-    const tmpl = emailTemplates.verifyEmail(name, verifyUrl);
-    await sendEmail({ to: email, ...tmpl });
-  } catch (err) {
-    console.error("[Auth] Verification email failed:", err.message);
-  }
+  const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
+  await notificationService.sendVerificationEmail({ to: email, name, url: verifyUrl });
 
   res.status(201).json({
     success: true,
@@ -57,26 +146,28 @@ exports.register = asyncHandler(async (req, res) => {
 exports.login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email }).select("+passwordHash");
+  const user = await User.findOne({ email }).select("+passwordHash +failedLoginAttempts +loginLockedUntil +refreshSessions");
+  if (user && isLoginLocked(user)) {
+    throw new AppError("Too many failed login attempts. Please try again later.", 423);
+  }
+
   if (!user || !(await user.comparePassword(password))) {
+    await registerFailedLogin(user, email);
     throw new AppError("Invalid email or password.", 401);
   }
   if (!user.isActive) throw new AppError("Your account has been deactivated. Contact support.", 403);
 
   user.lastLoginAt = new Date();
-  await user.save({ validateBeforeSave: false });
+  user.failedLoginAttempts = 0;
+  user.loginLockedUntil = undefined;
 
   const payload = { id: user._id, role: user.role };
   const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken(payload);
+  const refreshToken = issueRefreshSession(user, payload);
+  await user.save({ validateBeforeSave: false });
 
   res
-    .cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: getConfig().app.isProduction,
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    })
+    .cookie("refreshToken", refreshToken, refreshCookieOptions())
     .json({
       success: true,
       message: "Logged in successfully.",
@@ -92,20 +183,34 @@ exports.refresh = asyncHandler(async (req, res) => {
   if (!token) throw new AppError("No refresh token provided.", 401);
 
   const decoded = verifyRefreshToken(token);
-  const user = await User.findById(decoded.id);
+  if (!decoded.jti) throw new AppError("Invalid refresh token.", 401);
+
+  const user = await User.findById(decoded.id).select("+refreshSessions");
   if (!user || !user.isActive) throw new AppError("User not found or inactive.", 401);
+
+  pruneRefreshSessions(user);
+  const session = (user.refreshSessions || []).find((item) => item.sessionId === decoded.jti);
+  if (!session || new Date(session.expiresAt) <= new Date()) {
+    clearRefreshCookie(res);
+    if (user) await user.save({ validateBeforeSave: false });
+    throw new AppError("Refresh token is invalid or has expired.", 401);
+  }
+
+  if (session.tokenHash !== hashToken(token)) {
+    revokeRefreshSession(user, decoded.jti);
+    await user.save({ validateBeforeSave: false });
+    clearRefreshCookie(res);
+    console.warn("[Auth] Refresh token replay rejected", { userId: user._id, sessionId: decoded.jti });
+    throw new AppError("Refresh token is invalid or has expired.", 401);
+  }
 
   const payload = { id: user._id, role: user.role };
   const newAccessToken = signAccessToken(payload);
-  const newRefreshToken = signRefreshToken(payload);
+  const newRefreshToken = issueRefreshSession(user, payload, decoded.jti);
+  await user.save({ validateBeforeSave: false });
 
   res
-    .cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: getConfig().app.isProduction,
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    })
+    .cookie("refreshToken", newRefreshToken, refreshCookieOptions())
     .json({
       success: true,
       data: { accessToken: newAccessToken },
@@ -116,7 +221,24 @@ exports.refresh = asyncHandler(async (req, res) => {
 // POST /api/v1/auth/logout
 // ─────────────────────────────────────────────────────────────────────────────
 exports.logout = asyncHandler(async (req, res) => {
-  res.clearCookie("refreshToken").json({ success: true, message: "Logged out." });
+  const token = req.cookies?.refreshToken;
+  if (token) {
+    try {
+      const decoded = verifyRefreshToken(token);
+      if (decoded?.id && decoded?.jti) {
+        const user = await User.findById(decoded.id).select("+refreshSessions");
+        if (user) {
+          revokeRefreshSession(user, decoded.jti);
+          await user.save({ validateBeforeSave: false });
+        }
+      }
+    } catch {
+      // Logout should be idempotent even if the cookie is expired or malformed.
+    }
+  }
+
+  clearRefreshCookie(res);
+  res.json({ success: true, message: "Logged out." });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,16 +284,8 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
   user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
   await user.save({ validateBeforeSave: false });
 
-  try {
-    const resetUrl = `${getConfig().app.clientOrigins[0]}/reset-password?token=${rawToken}`;
-    const tmpl = emailTemplates.passwordReset(user.name, resetUrl);
-    await sendEmail({ to: user.email, ...tmpl });
-  } catch (err) {
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-    throw new AppError("Failed to send reset email. Try again later.", 500);
-  }
+  const resetUrl = `${getConfig().app.clientOrigins[0]}/reset-password?token=${rawToken}`;
+  await notificationService.sendPasswordResetEmail({ to: user.email, name: user.name, url: resetUrl });
 
   res.json({
     success: true,
@@ -189,13 +303,14 @@ exports.resetPassword = asyncHandler(async (req, res) => {
   const user = await User.findOne({
     passwordResetToken: hashed,
     passwordResetExpires: { $gt: Date.now() },
-  }).select("+passwordResetToken +passwordResetExpires");
+  }).select("+passwordResetToken +passwordResetExpires +refreshSessions");
 
   if (!user) throw new AppError("Reset token is invalid or has expired.", 400);
 
   user.passwordHash = await bcrypt.hash(password, 12);
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
+  user.refreshSessions = [];
   await user.save({ validateBeforeSave: false });
 
   res.json({ success: true, message: "Password reset successfully. You can now log in." });

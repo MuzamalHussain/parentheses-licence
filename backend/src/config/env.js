@@ -8,6 +8,14 @@ const booleanEnv = (defaultValue) =>
       return String(value).toLowerCase() === "true";
     }, z.boolean());
 
+const productionDefaultBooleanEnv = () =>
+  z
+    .preprocess((value) => {
+      if (value === undefined || value === "") return process.env.NODE_ENV === "production";
+      if (typeof value === "boolean") return value;
+      return String(value).toLowerCase() === "true";
+    }, z.boolean());
+
 const stringWithDefault = (defaultValue) =>
   z.preprocess((value) => (value === undefined || value === "" ? defaultValue : value), z.string());
 
@@ -24,6 +32,11 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(1, "JWT_REFRESH_SECRET is required"),
   JWT_ACCESS_EXPIRES: stringWithDefault("15m"),
   JWT_REFRESH_EXPIRES: stringWithDefault("7d"),
+  JWT_ISSUER: stringWithDefault("parentheses-licensing"),
+  JWT_AUDIENCE: stringWithDefault("parentheses-licensing-users"),
+  AUTH_MAX_FAILED_LOGIN_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  AUTH_LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+  AUTH_MAX_REFRESH_SESSIONS: z.coerce.number().int().positive().default(5),
 
   REDIS_ENABLED: booleanEnv(false),
   REDIS_URL: stringWithDefault("redis://localhost:6379"),
@@ -33,6 +46,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  SMTP_REPLY_TO: z.string().optional(),
+  EMAIL_PROVIDER: stringWithDefault("smtp"),
+  EMAIL_RETRY_COUNT: z.coerce.number().int().min(0).default(2),
+  EMAIL_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
 
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -44,11 +61,40 @@ const envSchema = z.object({
   ENABLE_LOCAL_PSP: booleanEnv(true),
   ENABLE_EMAIL_VERIFICATION_ENFORCEMENT: booleanEnv(true),
   ENABLE_WORDPRESS_UPDATER: booleanEnv(true),
-  ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT: booleanEnv(false),
+  ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT: productionDefaultBooleanEnv(),
   ENABLE_ADVANCED_SESSION_SECURITY: booleanEnv(false),
   ENABLE_WEBHOOK_STRICT_IDEMPOTENCY: booleanEnv(false),
   ENABLE_PAYMENT_TRANSACTIONS: booleanEnv(false),
   ENABLE_LICENSE_ACTIVATION_ATOMIC_GUARD: booleanEnv(false),
+
+  PLUGIN_ZIP_MAX_UPLOAD_MB: z.coerce.number().int().positive().default(50),
+  PLUGIN_ZIP_MAX_UNCOMPRESSED_MB: z.coerce.number().int().positive().default(150),
+  PLUGIN_ZIP_MAX_FILES: z.coerce.number().int().positive().default(2000),
+  PLUGIN_ZIP_MAX_COMPRESSION_RATIO: z.coerce.number().positive().default(20),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === "production") {
+    if (env.JWT_ACCESS_SECRET.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["JWT_ACCESS_SECRET"],
+        message: "JWT_ACCESS_SECRET must be at least 32 characters in production",
+      });
+    }
+    if (env.JWT_REFRESH_SECRET.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["JWT_REFRESH_SECRET"],
+        message: "JWT_REFRESH_SECRET must be at least 32 characters in production",
+      });
+    }
+  }
+  if (env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["JWT_REFRESH_SECRET"],
+      message: "JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET",
+    });
+  }
 });
 
 let config;
@@ -82,16 +128,25 @@ function buildConfig() {
       refreshSecret: env.JWT_REFRESH_SECRET,
       accessExpires: env.JWT_ACCESS_EXPIRES,
       refreshExpires: env.JWT_REFRESH_EXPIRES,
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+      maxFailedLoginAttempts: env.AUTH_MAX_FAILED_LOGIN_ATTEMPTS,
+      loginLockoutMinutes: env.AUTH_LOGIN_LOCKOUT_MINUTES,
+      maxRefreshSessions: env.AUTH_MAX_REFRESH_SESSIONS,
     },
     cors: {
       allowedOrigins: clientOrigins,
     },
     email: {
+      provider: env.EMAIL_PROVIDER,
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
       from: env.SMTP_FROM,
+      replyTo: env.SMTP_REPLY_TO,
+      retryCount: env.EMAIL_RETRY_COUNT,
+      timeoutMs: env.EMAIL_TIMEOUT_MS,
       enabled: Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM),
     },
     storage: {
@@ -106,6 +161,12 @@ function buildConfig() {
     },
     downloads: {
       provider: "local",
+      pluginZip: {
+        maxUploadBytes: env.PLUGIN_ZIP_MAX_UPLOAD_MB * 1024 * 1024,
+        maxUncompressedBytes: env.PLUGIN_ZIP_MAX_UNCOMPRESSED_MB * 1024 * 1024,
+        maxFiles: env.PLUGIN_ZIP_MAX_FILES,
+        maxCompressionRatio: env.PLUGIN_ZIP_MAX_COMPRESSION_RATIO,
+      },
     },
     security: {
       redisEnabled: env.REDIS_ENABLED,

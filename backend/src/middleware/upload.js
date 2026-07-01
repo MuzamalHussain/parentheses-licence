@@ -2,6 +2,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { AppError } = require("../utils/errorHandler");
+const { getConfig } = require("../config/env");
 
 const UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads", "plugins");
 
@@ -29,7 +30,7 @@ const fileFilter = (req, file, cb) => {
 const uploadPluginZip = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB ceiling
+  limits: { fileSize: getConfig().downloads.pluginZip.maxUploadBytes },
 }).single("file");
 
 // Wrap multer's callback style so multer errors flow through our error handler
@@ -37,7 +38,8 @@ const handleUpload = (req, res, next) => {
   uploadPluginZip(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_FILE_SIZE") {
-        return next(new AppError("File too large. Maximum size is 100MB.", 413));
+        const maxMb = Math.round(getConfig().downloads.pluginZip.maxUploadBytes / 1024 / 1024);
+        return next(new AppError(`Archive too large. Maximum ZIP size is ${maxMb}MB.`, 413));
       }
       return next(new AppError(err.message, 400));
     }

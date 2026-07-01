@@ -6,6 +6,20 @@ const Product = require("../models/Product");
 const { AppError } = require("../utils/errorHandler");
 const { fileChecksum } = require("../utils/downloadToken");
 const { writeAuditLog } = require("../utils/auditLog");
+const { getConfig } = require("../config/env");
+const { ZipValidationError, validatePluginZip } = require("../utils/pluginZipValidator");
+
+function logUploadValidation(status, details) {
+  const logger = status === "accepted" ? console.log : console.warn;
+  logger("[Plugin Upload Security]", {
+    status,
+    productId: details.productId,
+    versionNumber: details.versionNumber,
+    reasonCode: details.reasonCode,
+    fileSizeBytes: details.fileSizeBytes,
+    validator: details.validator,
+  });
+}
 
 // ─── GET /api/v1/admin/products/:productId/versions ─────────────────────────
 exports.getVersions = asyncHandler(async (req, res) => {
@@ -52,6 +66,45 @@ exports.uploadVersion = asyncHandler(async (req, res) => {
   if (exists) {
     fs.unlink(req.file.path, () => {});
     throw new AppError(`Version ${versionNumber} already exists for this product.`, 409);
+  }
+
+  const config = getConfig();
+  try {
+    const validation = validatePluginZip(req.file.path, {
+      expectedSlug: product.slug,
+      expectedVersion: versionNumber,
+      maxFiles: config.downloads.pluginZip.maxFiles,
+      maxUncompressedBytes: config.downloads.pluginZip.maxUncompressedBytes,
+      maxCompressionRatio: config.downloads.pluginZip.maxCompressionRatio,
+    });
+
+    logUploadValidation("accepted", {
+      productId: req.params.productId,
+      versionNumber,
+      fileSizeBytes: req.file.size,
+      validator: {
+        rootFolder: validation.rootFolder,
+        mainPluginFile: validation.mainPluginFile,
+        fileCount: validation.fileCount,
+        totalUncompressedBytes: validation.totalUncompressedBytes,
+        compressionRatio: Number(validation.compressionRatio.toFixed(2)),
+      },
+    });
+  } catch (err) {
+    if (!(err instanceof ZipValidationError)) throw err;
+
+    logUploadValidation(config.features.ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT ? "rejected" : "warned", {
+      productId: req.params.productId,
+      versionNumber,
+      reasonCode: err.code,
+      fileSizeBytes: req.file.size,
+      validator: err.metadata || {},
+    });
+
+    if (config.features.ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT) {
+      fs.unlink(req.file.path, () => {});
+      throw new AppError(err.message, err.statusCode || 422);
+    }
   }
 
   const checksum = await fileChecksum(req.file.path);
