@@ -30,7 +30,7 @@ services:
       # Override DB/Redis host to point at the compose services above,
       # regardless of what's in .env (useful for local docker-compose runs)
       - MONGO_URI=mongodb://mongo:27017
-      - MONGO_DB_NAME=Personal-Crowal
+      - MONGO_DB_NAME=parentheses_licensing
       - REDIS_ENABLED=true
       - REDIS_URL=redis://redis:6379
     depends_on:
