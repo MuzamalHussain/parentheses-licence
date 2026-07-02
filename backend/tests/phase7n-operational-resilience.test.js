@@ -120,6 +120,28 @@ async function testStartupDiagnosticsReportOperationalChecks() {
   });
 }
 
+async function testProductionEnvAllowsDisabledStripeAndPspAliasFlags() {
+  await withEnv({
+    ...validBaseEnv(),
+    NODE_ENV: "production",
+    APP_ENV: "production",
+    CLIENT_URL: "https://app.example.com",
+    SMTP_HOST: "smtp.example.com",
+    SMTP_USER: "no-reply@example.com",
+    SMTP_PASS: "strong_smtp_password",
+    SMTP_FROM: "Parentheses <no-reply@example.com>",
+    STRIPE_ENABLED: "false",
+    LOCAL_PSP_ENABLED: "false",
+  }, async () => {
+    const { validateProductionConfig } = require(path.join(root, "src/services/productionReadinessService.js"));
+    const result = validateProductionConfig(require(path.join(root, "src/config/env.js")).getConfig());
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.issues.some((item) => item.code === "stripe.secret_missing"));
+    assert.ok(!result.issues.some((item) => item.code === "stripe.webhook_secret_missing"));
+    assert.ok(!result.issues.some((item) => item.code === "local_psp.placeholder_credentials"));
+  });
+}
+
 async function testDiagnosticsIncludeOperationalReadiness() {
   await withEnv(validBaseEnv(), async () => {
     const { getSystemDiagnostics } = require(path.join(root, "src/services/diagnosticsService.js"));
@@ -154,6 +176,7 @@ async function run() {
     testEnvironmentIsolationRejectsMismatchedProductionAppEnv,
     testBackupAndRestoreReadiness,
     testStartupDiagnosticsReportOperationalChecks,
+    testProductionEnvAllowsDisabledStripeAndPspAliasFlags,
     testDiagnosticsIncludeOperationalReadiness,
     testGracefulShutdownClosesHttpServer,
   ];

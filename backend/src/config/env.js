@@ -1,11 +1,12 @@
 const { z } = require("zod");
 
-const booleanEnv = (defaultValue) =>
+const booleanEnv = (defaultValue, aliasKey) =>
   z
     .preprocess((value) => {
-      if (value === undefined || value === "") return defaultValue;
-      if (typeof value === "boolean") return value;
-      return String(value).toLowerCase() === "true";
+      const raw = value === undefined || value === "" ? process.env[aliasKey] : value;
+      if (raw === undefined || raw === "") return defaultValue;
+      if (typeof raw === "boolean") return raw;
+      return String(raw).toLowerCase() === "true";
     }, z.boolean());
 
 const productionDefaultBooleanEnv = () =>
@@ -68,8 +69,8 @@ const envSchema = z.object({
   CONFIG_BACKUP_INCLUDE_ENV: booleanEnv(false),
   BACKUP_READINESS_STRICT: productionDefaultBooleanEnv(),
 
-  ENABLE_STRIPE: booleanEnv(true),
-  ENABLE_LOCAL_PSP: booleanEnv(true),
+  ENABLE_STRIPE: booleanEnv(true, "STRIPE_ENABLED"),
+  ENABLE_LOCAL_PSP: booleanEnv(true, "LOCAL_PSP_ENABLED"),
   ENABLE_EMAIL_VERIFICATION_ENFORCEMENT: booleanEnv(true),
   ENABLE_WORDPRESS_UPDATER: booleanEnv(true),
   ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT: productionDefaultBooleanEnv(),
