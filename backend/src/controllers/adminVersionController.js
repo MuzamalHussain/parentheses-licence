@@ -23,7 +23,7 @@ function logUploadValidation(status, details) {
 
 // ─── GET /api/v1/admin/products/:productId/versions ─────────────────────────
 exports.getVersions = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.productId);
+  const product = await Product.findById(req.params.productId).select("_id").lean();
   if (!product) throw new AppError("Product not found.", 404);
 
   // Versions-per-product is bounded by release cadence, but a hard cap is
@@ -31,14 +31,15 @@ exports.getVersions = asyncHandler(async (req, res) => {
   const versions = await PluginVersion.find({ productId: req.params.productId })
     .sort({ createdAt: -1 })
     .limit(200)
-    .populate("uploadedBy", "name email");
+    .populate("uploadedBy", "name email")
+    .lean();
 
   res.json({ success: true, data: versions });
 });
 
 // ─── GET /api/v1/admin/products/:productId/versions/:id ─────────────────────
 exports.getVersion = asyncHandler(async (req, res) => {
-  const version = await PluginVersion.findOne({ _id: req.params.id, productId: req.params.productId });
+  const version = await PluginVersion.findOne({ _id: req.params.id, productId: req.params.productId }).lean();
   if (!version) throw new AppError("Version not found.", 404);
   res.json({ success: true, data: version });
 });

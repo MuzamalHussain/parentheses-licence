@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Globe, Search, Loader2, X, Trash2, Clock, User, Package, ExternalLink } from "lucide-react";
+import { Globe, Search, Loader2, X, Trash2, Clock, Package, ExternalLink } from "lucide-react";
 import { Input, Button, Alert } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Pagination from "../../components/ui/Pagination";

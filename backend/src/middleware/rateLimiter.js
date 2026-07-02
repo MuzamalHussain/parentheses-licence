@@ -62,7 +62,7 @@ async function checkRateLimit(key, { maxRequests, windowMs }) {
 function activationRateLimiter({ maxPerIp = 30, maxPerKey = 10, windowMs = 60_000 } = {}) {
   return async (req, res, next) => {
     const ip         = req.ip || req.connection?.remoteAddress || "unknown";
-    const licenseKey = (req.body?.licenseKey || "").toUpperCase().trim();
+    const licenseKey = (req.body?.licenseKey || req.body?.license_key || "").toUpperCase().trim();
 
     const ipKey  = `rl:activation:ip:${ip}`;
     const keyKey = licenseKey ? `rl:activation:key:${licenseKey}` : null;

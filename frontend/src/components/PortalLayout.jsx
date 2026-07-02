@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Key, Download, ShoppingCart, HeadphonesIcon, LogOut, Menu, X, User, Package } from "lucide-react";
+import { LayoutDashboard, Key, Download, ShoppingCart, HeadphonesIcon, LogOut, Menu, User, Package } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 

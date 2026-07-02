@@ -3,7 +3,7 @@ const router = express.Router();
 const c = require("../controllers/adminCouponController");
 const { requireAuth, requireRole } = require("../middleware/auth");
 const { z } = require("zod");
-const { validate } = require("../validators/schemas");
+const { validate, validateRequest, idParamSchema } = require("../validators/schemas");
 
 router.use(requireAuth, requireRole("admin", "support"));
 
@@ -23,10 +23,10 @@ const updateCouponSchema = z.object({
 });
 
 router.get("/",          c.getCoupons);
-router.get("/:id",       c.getCoupon);
 router.post("/",         requireRole("admin"), validate(createCouponSchema), c.createCoupon);
 router.post("/validate", c.validateCoupon);
-router.patch("/:id",     requireRole("admin"), validate(updateCouponSchema), c.updateCoupon);
-router.delete("/:id",    requireRole("admin"), c.deactivateCoupon);
+router.get("/:id",       validateRequest({ params: idParamSchema }), c.getCoupon);
+router.patch("/:id",     requireRole("admin"), validateRequest({ params: idParamSchema }), validate(updateCouponSchema), c.updateCoupon);
+router.delete("/:id",    requireRole("admin"), validateRequest({ params: idParamSchema }), c.deactivateCoupon);
 
 module.exports = router;

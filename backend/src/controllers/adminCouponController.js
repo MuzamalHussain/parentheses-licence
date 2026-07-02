@@ -2,12 +2,11 @@ const asyncHandler = require("express-async-handler");
 const Coupon = require("../models/Coupon");
 const { writeAuditLog } = require("../utils/auditLog");
 const { AppError } = require("../utils/errorHandler");
+const { getPagination, paginationMeta } = require("../utils/pagination");
 
 // GET /api/v1/admin/coupons
 exports.getCoupons = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(100, parseInt(req.query.limit) || 20);
-  const skip  = (page - 1) * limit;
+  const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
   if (req.query.search) filter.code = { $regex: req.query.search, $options: "i" };
@@ -15,20 +14,20 @@ exports.getCoupons = asyncHandler(async (req, res) => {
   if (req.query.active === "false") filter.isActive = false;
 
   const [coupons, total] = await Promise.all([
-    Coupon.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Coupon.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Coupon.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
     data: coupons,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 
 // GET /api/v1/admin/coupons/:id
 exports.getCoupon = asyncHandler(async (req, res) => {
-  const coupon = await Coupon.findById(req.params.id);
+  const coupon = await Coupon.findById(req.params.id).lean();
   if (!coupon) throw new AppError("Coupon not found.", 404);
   res.json({ success: true, data: coupon });
 });

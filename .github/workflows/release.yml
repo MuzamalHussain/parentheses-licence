@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      APP_ENV: test
+      MONGO_URI: mongodb://127.0.0.1:27017/parentheses_release
+      MONGO_DB_NAME: parentheses_release
+      JWT_ACCESS_SECRET: release_access_secret_abcdefghijklmnopqrstuvwxyz123456
+      JWT_REFRESH_SECRET: release_refresh_secret_abcdefghijklmnopqrstuvwxyz123456
+      REDIS_ENABLED: "false"
+      ENABLE_STRIPE: "false"
+      ENABLE_LOCAL_PSP: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Validate tag version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          node -e "const pkg=require('./package.json'); const tag=process.env.GITHUB_REF_NAME; if (tag !== `v${pkg.version}`) { console.error(`Tag ${tag} does not match package version v${pkg.version}`); process.exit(1); }"
+
+      - name: Backend gates
+        working-directory: backend
+        run: npm run lint && npm run build && npm test && npm audit --audit-level=high --omit=dev
+
+      - name: Frontend gates
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://api.parentheses.example/api/v1
+        run: npm run lint && npm run build && npm test && npm audit --audit-level=high
+
+      - name: Generate release summary
+        run: npm run verify:release
+
+      - name: Build release archives
+        run: |
+          mkdir -p artifacts
+          zip -r artifacts/frontend-dist.zip frontend/dist
+          zip -r artifacts/backend-source.zip backend/src backend/package.json backend/Dockerfile
+          zip -r artifacts/release-bundle.zip artifacts/release-summary.json artifacts/release-notes.md DEPLOYMENT.md docs
+
+      - name: Validate artifacts
+        run: npm run artifacts:validate
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: artifacts
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: artifacts/release-notes.md
+          files: |
+            artifacts/frontend-dist.zip
+            artifacts/backend-source.zip
+            artifacts/release-bundle.zip

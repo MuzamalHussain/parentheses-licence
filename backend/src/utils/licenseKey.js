@@ -1,27 +1,33 @@
 const crypto = require("crypto");
+const licenseEngineConfig = require("../config/licenseEngine");
 
 // Characters: uppercase alphanumeric, excluding ambiguous chars (0, O, I, 1)
 const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+function checksumFor(value) {
+  const digest = crypto.createHash("sha256").update(value).digest();
+  return CHARS[digest[0] % CHARS.length] + CHARS[digest[1] % CHARS.length];
+}
+
 /**
- * Generates a license key in format: XXXX-XXXX-XXXX-XXXX
+ * Generates a license key in format: XXXX-XXXX-XXXX-XXXX by default.
  * Uses crypto.randomBytes for cryptographic randomness.
  */
-function generateLicenseKey() {
-  const segments = 4;
-  const segmentLength = 4;
+function generateLicenseKey(options = {}) {
+  const segments = options.segments || licenseEngineConfig.keys.segments;
+  const segmentLength = options.segmentLength || licenseEngineConfig.keys.segmentLength;
+  const includeChecksum = options.includeChecksum ?? licenseEngineConfig.keys.includeChecksum;
   const parts = [];
 
   for (let s = 0; s < segments; s++) {
     let segment = "";
-    // Need segmentLength random chars; use 2 bytes per char for good distribution
-    const bytes = crypto.randomBytes(segmentLength * 2);
     for (let i = 0; i < segmentLength; i++) {
-      const val = bytes.readUInt16BE(i * 2);
-      segment += CHARS[val % CHARS.length];
+      segment += CHARS[crypto.randomInt(0, CHARS.length)];
     }
     parts.push(segment);
   }
+
+  if (includeChecksum) parts.push(checksumFor(parts.join("")));
 
   return parts.join("-");
 }
@@ -32,7 +38,7 @@ function generateLicenseKey() {
  */
 async function generateUniqueLicenseKey(LicenseModel, maxAttempts = 10, options = {}) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const key = generateLicenseKey();
+    const key = generateLicenseKey(options);
     const query = LicenseModel.exists({ licenseKey: key });
     const exists = options.session ? await query.session(options.session) : await query;
     if (!exists) return key;

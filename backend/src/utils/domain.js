@@ -39,8 +39,47 @@ function normalizeDomain(raw, { stripWww = false } = {}) {
  */
 function isValidDomain(domain) {
   if (!domain || domain.length > 253) return false;
+  if (domain.includes("*")) return false;
   // Allow labels (a-z 0-9 -), dots, optional :port, optional subdomains
   return /^[a-z0-9]([a-z0-9\-\.]*[a-z0-9])?(:[0-9]{1,5})?$/.test(domain);
 }
 
-module.exports = { normalizeDomain, isValidDomain };
+function stripPort(domain) {
+  return String(domain || "").replace(/:[0-9]{1,5}$/, "");
+}
+
+function isLocalhostDomain(domain) {
+  const host = stripPort(domain);
+  return host === "localhost" || host.endsWith(".localhost");
+}
+
+function isPrivateHost(domain) {
+  const host = stripPort(domain);
+  return (
+    /^10\./.test(host) ||
+    /^127\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+  );
+}
+
+function isStagingDomain(domain) {
+  const host = stripPort(domain);
+  return /(^|\.)((dev|test|stage|staging|qa|sandbox)\.)/.test(host) || /\.(dev|test|local)$/.test(host);
+}
+
+function domainPolicyViolation(domain, policy = {}) {
+  if (isLocalhostDomain(domain) && policy.allowLocalhost === false) return "localhost_not_allowed";
+  if (isPrivateHost(domain) && policy.allowPrivateHosts === false) return "private_host_not_allowed";
+  if (isStagingDomain(domain) && policy.allowStagingDomains === false) return "staging_not_allowed";
+  return null;
+}
+
+module.exports = {
+  normalizeDomain,
+  isValidDomain,
+  domainPolicyViolation,
+  isLocalhostDomain,
+  isPrivateHost,
+  isStagingDomain,
+};

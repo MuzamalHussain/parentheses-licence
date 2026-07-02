@@ -1,4 +1,11 @@
 const AuditLog = require("../models/AuditLog");
+const { logWarn, logError } = require("./logger");
+const mongoose = require("mongoose");
+
+function objectIdOrNull(value) {
+  if (!value) return null;
+  return mongoose.Types.ObjectId.isValid(value) ? value : null;
+}
 
 /**
  * Write an audit log entry.
@@ -13,16 +20,33 @@ const AuditLog = require("../models/AuditLog");
  * @param {string}      opts.ip       - request IP
  * @param {object}      opts.session  - optional MongoDB transaction session
  */
-async function writeAuditLog({ actor = null, action, targetType = "", targetId = null, metadata = {}, ip = "", session = null }) {
+async function writeAuditLog({ actor = null, action, targetType = "", targetId = null, metadata = {}, ip = "", requestId = "", session = null }) {
   try {
+    if (!session && mongoose.connection.readyState !== 1) {
+      logWarn("audit.write_skipped", {
+        requestId,
+        action,
+        targetType,
+        targetId,
+        reason: "database_unavailable",
+      });
+      return;
+    }
+
+    const actorId = objectIdOrNull(actor?._id);
+    const normalizedTargetId = objectIdOrNull(targetId);
     const entry = {
-      actorId:    actor?._id   || null,
+      actorId,
       actorRole:  actor?.role  || "system",
       actorEmail: actor?.email || "",
       action,
       targetType,
-      targetId,
-      metadata,
+      targetId: normalizedTargetId,
+      metadata: {
+        ...metadata,
+        ...(!normalizedTargetId && targetId ? { targetRef: String(targetId) } : {}),
+        ...(requestId && !metadata.requestId ? { requestId } : {}),
+      },
       ipAddress: ip,
     };
     if (session) {
@@ -31,7 +55,7 @@ async function writeAuditLog({ actor = null, action, targetType = "", targetId =
       await AuditLog.create(entry);
     }
   } catch (err) {
-    console.error("[AuditLog] Write failed:", err.message);
+    logError("audit.write_failed", { requestId, action, targetType, targetId, error: err });
   }
 }
 

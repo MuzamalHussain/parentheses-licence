@@ -6,6 +6,9 @@ const Product = require("../models/Product");
 const { generateUniqueLicenseKey } = require("../utils/licenseKey");
 const { writeAuditLog } = require("../utils/auditLog");
 const { AppError } = require("../utils/errorHandler");
+const { getPagination, paginationMeta } = require("../utils/pagination");
+const { getCached } = require("../utils/ttlCache");
+const performanceConfig = require("../config/performance");
 
 // ─── Helper: populate license with product/plan/user ────────────────────────
 const populateLicense = (query) =>
@@ -16,9 +19,7 @@ const populateLicense = (query) =>
 
 // ─── GET /api/v1/admin/licenses ─────────────────────────────────────────────
 exports.getLicenses = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(100, parseInt(req.query.limit) || 20);
-  const skip  = (page - 1) * limit;
+  const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
   if (req.query.status)    filter.status    = req.query.status;
@@ -31,14 +32,14 @@ exports.getLicenses = asyncHandler(async (req, res) => {
   }
 
   const [licenses, total] = await Promise.all([
-    populateLicense(License.find(filter)).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    populateLicense(License.find(filter)).sort({ createdAt: -1 }).skip(skip).limit(limit).lean({ virtuals: true }),
     License.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
     data: licenses,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 
@@ -64,8 +65,6 @@ exports.createLicense = asyncHandler(async (req, res) => {
   const product = await Product.findById(productId);
   if (!product) throw new AppError("Product not found.", 404);
 
-  const licenseKey = await generateUniqueLicenseKey(License);
-
   // allowedSites: use plan default unless admin explicitly overrides
   const allowedSites = allowedSitesOverride !== undefined ? allowedSitesOverride : plan.allowedSites;
 
@@ -75,15 +74,25 @@ exports.createLicense = asyncHandler(async (req, res) => {
     computedExpiry = new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000);
   }
 
-  const license = await License.create({
-    licenseKey,
-    userId,
-    productId,
-    planId,
-    allowedSites,
-    expiresAt: computedExpiry,
-    notes: notes || "",
-  });
+  let license;
+  let licenseKey;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    licenseKey = await generateUniqueLicenseKey(License);
+    try {
+      license = await License.create({
+        licenseKey,
+        userId,
+        productId,
+        planId,
+        allowedSites,
+        expiresAt: computedExpiry,
+        notes: notes || "",
+      });
+      break;
+    } catch (err) {
+      if (err?.code !== 11000 || attempt === 2) throw err;
+    }
+  }
 
   await writeAuditLog({
     actor: req.user,
@@ -199,20 +208,25 @@ exports.resetActivations = asyncHandler(async (req, res) => {
 
 // ─── GET /api/v1/admin/licenses/stats ───────────────────────────────────────
 exports.getLicenseStats = asyncHandler(async (req, res) => {
-  const [statusCounts, recentLicenses] = await Promise.all([
-    License.aggregate([
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-    ]),
-    License.find().sort({ createdAt: -1 }).limit(5)
-      .populate("userId", "name email")
-      .populate("productId", "name"),
-  ]);
+  const data = await getCached("admin:licenses:stats:v1", performanceConfig.cache.statsTtlMs, async () => {
+    const [statusCounts, recentLicenses] = await Promise.all([
+      License.aggregate([
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      License.find().sort({ createdAt: -1 }).limit(5)
+        .select("licenseKey status userId productId createdAt expiresAt")
+        .populate("userId", "name email")
+        .populate("productId", "name")
+        .lean(),
+    ]);
 
-  const stats = { active: 0, suspended: 0, revoked: 0, expired: 0, total: 0 };
-  statusCounts.forEach(({ _id, count }) => {
-    if (_id in stats) stats[_id] = count;
-    stats.total += count;
+    const stats = { active: 0, suspended: 0, revoked: 0, expired: 0, total: 0 };
+    statusCounts.forEach(({ _id, count }) => {
+      if (_id in stats) stats[_id] = count;
+      stats.total += count;
+    });
+    return { stats, recentLicenses };
   });
 
-  res.json({ success: true, data: { stats, recentLicenses } });
+  res.json({ success: true, data });
 });

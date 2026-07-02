@@ -3,7 +3,7 @@ const router = express.Router();
 const c = require("../controllers/adminLicenseController");
 const { requireAuth, requireRole } = require("../middleware/auth");
 const { z } = require("zod");
-const { validate } = require("../validators/schemas");
+const { validate, validateRequest, idParamSchema } = require("../validators/schemas");
 
 router.use(requireAuth, requireRole("admin", "support"));
 
@@ -25,14 +25,14 @@ const updateLicenseSchema = z.object({
 
 router.get("/stats", c.getLicenseStats);
 router.get("/",      c.getLicenses);
-router.get("/:id",   c.getLicense);
+router.get("/:id",   validateRequest({ params: idParamSchema }), c.getLicense);
 
 router.post("/",     requireRole("admin"), validate(createLicenseSchema), c.createLicense);
-router.patch("/:id", requireRole("admin"), validate(updateLicenseSchema), c.updateLicense);
+router.patch("/:id", requireRole("admin"), validateRequest({ params: idParamSchema }), validate(updateLicenseSchema), c.updateLicense);
 
-router.post("/:id/suspend",           requireRole("admin"), c.suspendLicense);
-router.post("/:id/reinstate",         requireRole("admin"), c.reinstateLicense);
-router.post("/:id/revoke",            requireRole("admin"), c.revokeLicense);
-router.post("/:id/reset-activations", requireRole("admin"), c.resetActivations);
+router.post("/:id/suspend",           requireRole("admin"), validateRequest({ params: idParamSchema }), c.suspendLicense);
+router.post("/:id/reinstate",         requireRole("admin"), validateRequest({ params: idParamSchema }), c.reinstateLicense);
+router.post("/:id/revoke",            requireRole("admin"), validateRequest({ params: idParamSchema }), c.revokeLicense);
+router.post("/:id/reset-activations", requireRole("admin"), validateRequest({ params: idParamSchema }), c.resetActivations);
 
 module.exports = router;

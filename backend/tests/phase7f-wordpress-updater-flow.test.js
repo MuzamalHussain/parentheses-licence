@@ -88,7 +88,7 @@ function createHarness(overrides = {}) {
 
   const DownloadMock = {
     async create(doc) {
-      store.downloads.push({ ...doc, _id: `dl_${store.downloads.length + 1}`, async save() { Object.assign(store.downloads.find((d) => d._id === this._id), this); } });
+      store.downloads.push({ usedAt: null, ...doc, _id: `dl_${store.downloads.length + 1}`, async save() { Object.assign(store.downloads.find((d) => d._id === this._id), this); } });
       return store.downloads[store.downloads.length - 1];
     },
     findOne(filter) {
@@ -98,9 +98,24 @@ function createHarness(overrides = {}) {
       );
       return query(found || null);
     },
+    findOneAndUpdate(filter, update) {
+      const found = store.downloads.find((download) =>
+        download._id === filter._id &&
+        download.usedAt === null &&
+        download.purpose === filter.purpose &&
+        download.expiresAt > filter.expiresAt.$gt
+      );
+      if (!found) return query(null);
+      Object.assign(found, update.$set);
+      return query(found);
+    },
   };
 
-  return { store, mocks: { LicenseMock, PluginVersionMock, DownloadMock }, zipPath };
+  const auditLogMock = {
+    writeAuditLog: async () => {},
+  };
+
+  return { store, mocks: { LicenseMock, PluginVersionMock, DownloadMock, auditLogMock }, zipPath };
 }
 
 function loadController(harness) {
@@ -109,6 +124,7 @@ function loadController(harness) {
     ["src/models/License.js", harness.mocks.LicenseMock],
     ["src/models/PluginVersion.js", harness.mocks.PluginVersionMock],
     ["src/models/Download.js", harness.mocks.DownloadMock],
+    ["src/utils/auditLog.js", harness.mocks.auditLogMock],
   ]) {
     const resolved = clearModule(relativePath);
     require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CheckCircle, XCircle } from "lucide-react";
+import { XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import AuthLayout from "../../components/AuthLayout";
 import { Input, FormField, Button, Alert } from "../../components/ui";

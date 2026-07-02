@@ -2,17 +2,40 @@ require("dotenv").config();
 const { getConfig } = require("./config/env");
 const app = require("./app");
 const connectDB = require("./config/db");
+const { runStartupDiagnostics } = require("./services/productionReadinessService");
+const { registerGracefulShutdown } = require("./services/gracefulShutdown");
+const { logInfo, logError } = require("./utils/logger");
 
 const config = getConfig();
 
 async function startServer() {
   await connectDB();
-  app.listen(config.app.port, () => {
-    console.log(`Server running on http://localhost:${config.app.port} [${config.app.nodeEnv}]`);
+  const diagnostics = await runStartupDiagnostics();
+  if (config.app.isProduction && !diagnostics.checks.environment.ok) {
+    throw new Error("Production environment validation failed.");
+  }
+  if (config.app.isProduction && config.operations.backupReadinessStrict && !diagnostics.checks.backup.ok) {
+    throw new Error("Production backup readiness validation failed.");
+  }
+
+  const server = app.listen(config.app.port, () => {
+    logInfo("server.started", {
+      port: config.app.port,
+      nodeEnv: config.app.nodeEnv,
+      appEnv: config.app.appEnv,
+      deploymentTarget: config.app.deploymentTarget,
+      diagnosticsStatus: diagnostics.status,
+    });
+  });
+  registerGracefulShutdown(server);
+  return server;
+}
+
+if (require.main === module) {
+  startServer().catch((err) => {
+    logError("server.start_failed", { error: err });
+    process.exit(1);
   });
 }
 
-startServer().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
-});
+module.exports = { startServer };

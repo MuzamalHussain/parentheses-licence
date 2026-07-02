@@ -20,5 +20,7 @@ const licenseActivationSchema = new mongoose.Schema(
 );
 
 licenseActivationSchema.index({ licenseId: 1, createdAt: -1 });
+licenseActivationSchema.index({ domain: 1, createdAt: -1 });
+licenseActivationSchema.index({ action: 1, createdAt: -1 });
 
 module.exports = mongoose.model("LicenseActivation", licenseActivationSchema);

@@ -55,6 +55,8 @@ const supportTicketSchema = new mongoose.Schema(
 );
 
 supportTicketSchema.index({ userId: 1, status: 1 });
+supportTicketSchema.index({ userId: 1, lastMessageAt: -1 });
+supportTicketSchema.index({ userId: 1, status: 1, lastMessageAt: -1 });
 supportTicketSchema.index({ status: 1, lastMessageAt: -1 });
 
 module.exports = mongoose.model("SupportTicket", supportTicketSchema);

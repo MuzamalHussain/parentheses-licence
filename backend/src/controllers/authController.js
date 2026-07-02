@@ -6,6 +6,7 @@ const { signAccessToken, signRefreshToken, verifyRefreshToken } = require("../ut
 const { AppError } = require("../utils/errorHandler");
 const notificationService = require("../services/notificationService");
 const { getConfig } = require("../config/env");
+const { writeAuditLog } = require("../utils/auditLog");
 
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
@@ -43,10 +44,23 @@ function isLoginLocked(user) {
   return Boolean(user.loginLockedUntil && new Date(user.loginLockedUntil) > new Date());
 }
 
-async function registerFailedLogin(user, email) {
+function auditAuthEvent(req, action, user = null, metadata = {}) {
+  writeAuditLog({
+    actor: user,
+    action,
+    targetType: user ? "User" : "",
+    targetId: user?._id || null,
+    metadata,
+    ip: req?.ip || "",
+    requestId: req?.id || "",
+  }).catch(() => {});
+}
+
+async function registerFailedLogin(user, email, req = null) {
   if (!user) {
     await bcrypt.compare("invalid-password", DUMMY_PASSWORD_HASH);
     console.warn("[Auth] Failed login", { email, reason: "invalid_credentials" });
+    await auditAuthEvent(req, "auth.login_failed", null, { reason: "invalid_credentials", email });
     return;
   }
 
@@ -62,6 +76,11 @@ async function registerFailedLogin(user, email) {
   }
 
   await user.save({ validateBeforeSave: false });
+  await auditAuthEvent(req, "auth.login_failed", user, {
+    reason: "invalid_credentials",
+    failedLoginAttempts,
+    locked: Boolean(user.loginLockedUntil),
+  });
 }
 
 function pruneRefreshSessions(user) {
@@ -132,6 +151,7 @@ exports.register = asyncHandler(async (req, res) => {
 
   const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
   await notificationService.sendVerificationEmail({ to: email, name, url: verifyUrl });
+  await auditAuthEvent(req, "auth.registered", user, { emailVerificationSent: true });
 
   res.status(201).json({
     success: true,
@@ -152,7 +172,7 @@ exports.login = asyncHandler(async (req, res) => {
   }
 
   if (!user || !(await user.comparePassword(password))) {
-    await registerFailedLogin(user, email);
+    await registerFailedLogin(user, email, req);
     throw new AppError("Invalid email or password.", 401);
   }
   if (!user.isActive) throw new AppError("Your account has been deactivated. Contact support.", 403);
@@ -165,6 +185,7 @@ exports.login = asyncHandler(async (req, res) => {
   const accessToken = signAccessToken(payload);
   const refreshToken = issueRefreshSession(user, payload);
   await user.save({ validateBeforeSave: false });
+  await auditAuthEvent(req, "auth.login", user, { sessionCount: user.refreshSessions?.length || 0 });
 
   res
     .cookie("refreshToken", refreshToken, refreshCookieOptions())
@@ -222,12 +243,16 @@ exports.refresh = asyncHandler(async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.logout = asyncHandler(async (req, res) => {
   const token = req.cookies?.refreshToken;
+  let auditUser = null;
+  let auditSessionId = "";
   if (token) {
     try {
       const decoded = verifyRefreshToken(token);
       if (decoded?.id && decoded?.jti) {
         const user = await User.findById(decoded.id).select("+refreshSessions");
         if (user) {
+          auditUser = user;
+          auditSessionId = decoded.jti;
           revokeRefreshSession(user, decoded.jti);
           await user.save({ validateBeforeSave: false });
         }
@@ -238,6 +263,7 @@ exports.logout = asyncHandler(async (req, res) => {
   }
 
   clearRefreshCookie(res);
+  await auditAuthEvent(req, "auth.logout", auditUser, { sessionId: auditSessionId });
   res.json({ success: true, message: "Logged out." });
 });
 
@@ -260,6 +286,7 @@ exports.verifyEmail = asyncHandler(async (req, res) => {
   user.emailVerificationToken = undefined;
   user.emailVerificationExpires = undefined;
   await user.save({ validateBeforeSave: false });
+  await auditAuthEvent(req, "auth.email_verified", user);
 
   res.json({ success: true, message: "Email verified successfully. You can now log in." });
 });
@@ -286,6 +313,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
 
   const resetUrl = `${getConfig().app.clientOrigins[0]}/reset-password?token=${rawToken}`;
   await notificationService.sendPasswordResetEmail({ to: user.email, name: user.name, url: resetUrl });
+  await auditAuthEvent(req, "auth.password_reset_requested", user);
 
   res.json({
     success: true,
@@ -312,6 +340,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
   user.passwordResetExpires = undefined;
   user.refreshSessions = [];
   await user.save({ validateBeforeSave: false });
+  await auditAuthEvent(req, "auth.password_reset_completed", user);
 
   res.json({ success: true, message: "Password reset successfully. You can now log in." });
 });

@@ -2,6 +2,7 @@ const { getConfig } = require("../config/env");
 const { renderTemplate } = require("./notifications/templates");
 const { createEmailProvider } = require("./notifications/providers");
 const { getNotificationQueue } = require("./notifications/queue");
+const { logInfo, logWarn } = require("../utils/logger");
 
 let providerOverride = null;
 let loggerOverride = null;
@@ -18,7 +19,10 @@ function maskRecipient(recipient = "") {
 }
 
 function getLogger() {
-  return loggerOverride || console;
+  return loggerOverride || {
+    log: (marker, payload) => logInfo("notification.sent", { marker, ...payload }),
+    warn: (marker, payload) => logWarn("notification.warning", { marker, ...payload }),
+  };
 }
 
 function getProvider(config = getConfig()) {

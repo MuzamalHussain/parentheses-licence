@@ -3,6 +3,8 @@ const License = require("../models/License");
 const LicenseActivation = require("../models/LicenseActivation");
 const { AppError } = require("../utils/errorHandler");
 const { normalizeDomain, isValidDomain } = require("../utils/domain");
+const { getCached } = require("../utils/ttlCache");
+const performanceConfig = require("../config/performance");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/admin/domains
@@ -87,26 +89,27 @@ exports.getDomains = asyncHandler(async (req, res) => {
 // GET /api/v1/admin/domains/stats
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getDomainStats = asyncHandler(async (req, res) => {
-  const [result] = await License.aggregate([
-    { $match: { "activeDomains.0": { $exists: true } } },
-    { $project: { count: { $size: "$activeDomains" } } },
-    { $group: { _id: null, totalDomains: { $sum: "$count" }, licensesWithDomains: { $sum: 1 } } },
-  ]);
+  const data = await getCached("admin:domains:stats:v1", performanceConfig.cache.statsTtlMs, async () => {
+    const [result] = await License.aggregate([
+      { $match: { "activeDomains.0": { $exists: true } } },
+      { $project: { count: { $size: "$activeDomains" } } },
+      { $group: { _id: null, totalDomains: { $sum: "$count" }, licensesWithDomains: { $sum: 1 } } },
+    ]);
 
-  const [last24h, last7d] = await Promise.all([
-    LicenseActivation.countDocuments({ action: "activate", createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
-    LicenseActivation.countDocuments({ action: "activate", createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
-  ]);
+    const [last24h, last7d] = await Promise.all([
+      LicenseActivation.countDocuments({ action: "activate", createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+      LicenseActivation.countDocuments({ action: "activate", createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+    ]);
 
-  res.json({
-    success: true,
-    data: {
+    return {
       totalActiveDomains:  result?.totalDomains || 0,
       licensesWithDomains: result?.licensesWithDomains || 0,
       activationsLast24h:  last24h,
       activationsLast7d:   last7d,
-    },
+    };
   });
+
+  res.json({ success: true, data });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +123,8 @@ exports.getDomainHistory = asyncHandler(async (req, res) => {
   const history = await LicenseActivation.find({ licenseId: req.params.licenseId })
     .sort({ createdAt: -1 })
     .limit(100)
-    .populate("actorId", "name email role");
+    .populate("actorId", "name email role")
+    .lean();
 
   res.json({ success: true, data: history });
 });

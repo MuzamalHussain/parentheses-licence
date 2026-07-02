@@ -8,6 +8,8 @@ const { createCheckoutSession } = require("../services/stripeService");
 const { createLocalCheckout } = require("../services/localPspService");
 const { assertProviderOperational } = require("../services/paymentProviderStatus");
 const { getConfig } = require("../config/env");
+const { getPagination, paginationMeta } = require("../utils/pagination");
+const performanceConfig = require("../config/performance");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/orders/checkout
@@ -109,8 +111,9 @@ exports.createCheckout = asyncHandler(async (req, res) => {
 // GET /api/v1/orders  — customer's own orders
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getMyOrders = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(50, parseInt(req.query.limit) || 20);
+  const { page, limit, skip } = getPagination(req.query, {
+    maxLimit: performanceConfig.pagination.customerMaxLimit,
+  });
 
   const filter = { userId: req.user._id };
   if (req.query.status) filter.status = req.query.status;
@@ -118,18 +121,19 @@ exports.getMyOrders = asyncHandler(async (req, res) => {
   const [orders, total] = await Promise.all([
     Order.find(filter)
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit)
       .populate("productId", "name")
       .populate("planId", "name")
-      .populate("licenseId", "licenseKey"),
+      .populate("licenseId", "licenseKey")
+      .lean(),
     Order.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
     data: orders,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 
@@ -140,7 +144,8 @@ exports.getMyOrder = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
     .populate("productId", "name")
     .populate("planId", "name")
-    .populate("licenseId", "licenseKey");
+    .populate("licenseId", "licenseKey")
+    .lean();
   if (!order) throw new AppError("Order not found.", 404);
   res.json({ success: true, data: order });
 });

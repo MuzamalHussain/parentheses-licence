@@ -33,10 +33,12 @@ export default function RegisterPage() {
     resolver: zodResolver(schema),
   });
 
-  const onSubmit = async ({ confirmPassword, ...values }) => {
+  const onSubmit = async (values) => {
     setServerError("");
     try {
-      await registerUser(values);
+      const payload = { ...values };
+      delete payload.confirmPassword;
+      await registerUser(payload);
       setSuccess(true);
     } catch (err) {
       setServerError(err.response?.data?.message || "Registration failed. Please try again.");

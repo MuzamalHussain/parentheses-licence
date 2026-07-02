@@ -19,8 +19,12 @@ const productionDefaultBooleanEnv = () =>
 const stringWithDefault = (defaultValue) =>
   z.preprocess((value) => (value === undefined || value === "" ? defaultValue : value), z.string());
 
+const optionalString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  APP_ENV: z.enum(["development", "staging", "production", "test"]).optional(),
+  DEPLOYMENT_TARGET: stringWithDefault("local"),
   PORT: z.coerce.number().int().positive().default(5000),
   CLIENT_URL: stringWithDefault("http://localhost:5173"),
 
@@ -41,21 +45,28 @@ const envSchema = z.object({
   REDIS_ENABLED: booleanEnv(false),
   REDIS_URL: stringWithDefault("redis://localhost:6379"),
 
-  SMTP_HOST: z.string().optional(),
+  SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().optional(),
-  SMTP_REPLY_TO: z.string().optional(),
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
+  SMTP_FROM: optionalString,
+  SMTP_REPLY_TO: optionalString,
   EMAIL_PROVIDER: stringWithDefault("smtp"),
   EMAIL_RETRY_COUNT: z.coerce.number().int().min(0).default(2),
   EMAIL_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  STARTUP_VERIFY_SMTP: booleanEnv(false),
 
-  STRIPE_SECRET_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_SECRET_KEY: optionalString,
+  STRIPE_WEBHOOK_SECRET: optionalString,
   LOCAL_PSP_BASE_URL: stringWithDefault("https://sandbox.local-psp.example.com/api/v1"),
   LOCAL_PSP_MERCHANT_ID: stringWithDefault("dummy_merchant_id"),
   LOCAL_PSP_SECRET_KEY: stringWithDefault("dummy_secret_key_replace_me"),
+
+  STORAGE_PROVIDER: stringWithDefault("local"),
+  UPLOAD_ROOT: stringWithDefault("uploads"),
+  BACKUP_ROOT: stringWithDefault("backups"),
+  CONFIG_BACKUP_INCLUDE_ENV: booleanEnv(false),
+  BACKUP_READINESS_STRICT: productionDefaultBooleanEnv(),
 
   ENABLE_STRIPE: booleanEnv(true),
   ENABLE_LOCAL_PSP: booleanEnv(true),
@@ -66,6 +77,9 @@ const envSchema = z.object({
   ENABLE_WEBHOOK_STRICT_IDEMPOTENCY: booleanEnv(false),
   ENABLE_PAYMENT_TRANSACTIONS: booleanEnv(false),
   ENABLE_LICENSE_ACTIVATION_ATOMIC_GUARD: booleanEnv(false),
+  MAINTENANCE_MODE: booleanEnv(false),
+  READ_ONLY_MODE: booleanEnv(false),
+  EMERGENCY_SHUTDOWN: booleanEnv(false),
 
   PLUGIN_ZIP_MAX_UPLOAD_MB: z.coerce.number().int().positive().default(50),
   PLUGIN_ZIP_MAX_UNCOMPRESSED_MB: z.coerce.number().int().positive().default(150),
@@ -95,6 +109,20 @@ const envSchema = z.object({
       message: "JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET",
     });
   }
+  if (env.NODE_ENV === "production" && env.CLIENT_URL.split(",").map((origin) => origin.trim()).includes("*")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["CLIENT_URL"],
+      message: "Wildcard CORS origins are not allowed in production",
+    });
+  }
+  if (env.NODE_ENV === "production" && env.APP_ENV && env.APP_ENV !== "production") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["APP_ENV"],
+      message: "APP_ENV must be production when NODE_ENV is production",
+    });
+  }
 });
 
 let config;
@@ -112,6 +140,8 @@ function buildConfig() {
   return {
     app: {
       nodeEnv: env.NODE_ENV,
+      appEnv: env.APP_ENV || env.NODE_ENV,
+      deploymentTarget: env.DEPLOYMENT_TARGET,
       port: env.PORT,
       clientUrl: env.CLIENT_URL,
       clientOrigins,
@@ -147,10 +177,13 @@ function buildConfig() {
       replyTo: env.SMTP_REPLY_TO,
       retryCount: env.EMAIL_RETRY_COUNT,
       timeoutMs: env.EMAIL_TIMEOUT_MS,
+      verifyOnStartup: env.STARTUP_VERIFY_SMTP,
       enabled: Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM),
     },
     storage: {
-      provider: "local",
+      provider: env.STORAGE_PROVIDER,
+      uploadRoot: env.UPLOAD_ROOT,
+      pluginUploadDir: `${env.UPLOAD_ROOT.replace(/[\\/]+$/, "")}/plugins`,
     },
     payments: {
       stripeSecretKey: env.STRIPE_SECRET_KEY,
@@ -160,13 +193,21 @@ function buildConfig() {
       localPspSecretKey: env.LOCAL_PSP_SECRET_KEY,
     },
     downloads: {
-      provider: "local",
+      provider: env.STORAGE_PROVIDER,
       pluginZip: {
         maxUploadBytes: env.PLUGIN_ZIP_MAX_UPLOAD_MB * 1024 * 1024,
         maxUncompressedBytes: env.PLUGIN_ZIP_MAX_UNCOMPRESSED_MB * 1024 * 1024,
         maxFiles: env.PLUGIN_ZIP_MAX_FILES,
         maxCompressionRatio: env.PLUGIN_ZIP_MAX_COMPRESSION_RATIO,
       },
+    },
+    operations: {
+      backupRoot: env.BACKUP_ROOT,
+      configBackupIncludeEnv: env.CONFIG_BACKUP_INCLUDE_ENV,
+      backupReadinessStrict: env.BACKUP_READINESS_STRICT,
+      maintenanceMode: env.MAINTENANCE_MODE,
+      readOnlyMode: env.READ_ONLY_MODE,
+      emergencyShutdown: env.EMERGENCY_SHUTDOWN,
     },
     security: {
       redisEnabled: env.REDIS_ENABLED,

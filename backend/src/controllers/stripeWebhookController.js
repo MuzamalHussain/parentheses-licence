@@ -15,7 +15,7 @@ async function handleStripeWebhook(req, res) {
     event = constructWebhookEvent(req.body, signature);
   } catch (err) {
     console.error("[Stripe Webhook] Signature verification failed:", err.message);
-    return res.status(400).json({ success: false, message: "Webhook signature verification failed." });
+    return res.status(400).json({ success: false, message: "Webhook signature verification failed.", requestId: req.id });
   }
 
   console.log("[Stripe Webhook]", {
@@ -100,7 +100,7 @@ async function handleStripeWebhook(req, res) {
       error: err.message,
     });
     await markWebhookFailed("stripe", event.id, err.message);
-    res.status(500).json({ success: false, message: "Webhook processing failed." });
+    res.status(500).json({ success: false, message: "Webhook processing failed.", requestId: req.id });
   }
 }
 

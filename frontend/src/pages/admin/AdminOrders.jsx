@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ShoppingCart, DollarSign, Loader2, Search, X, Undo2, ExternalLink } from "lucide-react";
+import { ShoppingCart, DollarSign, Loader2, Undo2 } from "lucide-react";
 import { Input, Button, Alert } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Pagination from "../../components/ui/Pagination";

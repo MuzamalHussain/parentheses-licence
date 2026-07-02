@@ -49,5 +49,6 @@ const webhookEventSchema = new mongoose.Schema(
 
 // One record per (gateway, eventId) — the unique index IS the idempotency guarantee.
 webhookEventSchema.index({ gateway: 1, eventId: 1 }, { unique: true });
+webhookEventSchema.index({ gateway: 1, status: 1, updatedAt: 1 });
 
 module.exports = mongoose.model("WebhookEvent", webhookEventSchema);

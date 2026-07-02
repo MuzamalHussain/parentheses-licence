@@ -2,12 +2,13 @@ const asyncHandler = require("express-async-handler");
 const SupportTicket = require("../models/SupportTicket");
 const { writeAuditLog } = require("../utils/auditLog");
 const { AppError } = require("../utils/errorHandler");
+const { getPagination, paginationMeta } = require("../utils/pagination");
+const { getCached } = require("../utils/ttlCache");
+const performanceConfig = require("../config/performance");
 
 // GET /api/v1/admin/support/tickets
 exports.getTickets = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(100, parseInt(req.query.limit) || 20);
-  const skip  = (page - 1) * limit;
+  const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
@@ -18,26 +19,30 @@ exports.getTickets = asyncHandler(async (req, res) => {
       .select("-messages")
       .populate("userId", "name email")
       .sort({ status: 1, lastMessageAt: -1 }) // open/pending tickets surface first
-      .skip(skip).limit(limit),
+      .skip(skip).limit(limit)
+      .lean(),
     SupportTicket.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
     data: tickets,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 
 // GET /api/v1/admin/support/tickets/stats
 exports.getTicketStats = asyncHandler(async (req, res) => {
-  const counts = await SupportTicket.aggregate([
-    { $group: { _id: "$status", count: { $sum: 1 } } },
-  ]);
-  const stats = { open: 0, pending: 0, closed: 0, total: 0 };
-  counts.forEach(({ _id, count }) => {
-    if (_id in stats) stats[_id] = count;
-    stats.total += count;
+  const stats = await getCached("admin:support:stats:v1", performanceConfig.cache.statsTtlMs, async () => {
+    const counts = await SupportTicket.aggregate([
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]);
+    const result = { open: 0, pending: 0, closed: 0, total: 0 };
+    counts.forEach(({ _id, count }) => {
+      if (_id in result) result[_id] = count;
+      result.total += count;
+    });
+    return result;
   });
   res.json({ success: true, data: stats });
 });

@@ -1,6 +1,7 @@
 const Stripe = require("stripe");
 const { getConfig } = require("../config/env");
 const { assertProviderOperational } = require("./paymentProviderStatus");
+const apiSecurityConfig = require("../config/apiSecurity");
 
 let stripeClient = null;
 function getStripe() {
@@ -58,7 +59,12 @@ function constructWebhookEvent(rawBody, signature) {
   if (!config.payments.stripeWebhookSecret) {
     throw new Error("STRIPE_WEBHOOK_SECRET is not set in .env");
   }
-  return stripe.webhooks.constructEvent(rawBody, signature, config.payments.stripeWebhookSecret);
+  return stripe.webhooks.constructEvent(
+    rawBody,
+    signature,
+    config.payments.stripeWebhookSecret,
+    apiSecurityConfig.webhooks.timestampToleranceSeconds
+  );
 }
 
 module.exports = { getStripe, createCheckoutSession, constructWebhookEvent };

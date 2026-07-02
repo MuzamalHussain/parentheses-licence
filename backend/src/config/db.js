@@ -1,6 +1,7 @@
 const dns = require("dns");
 const mongoose = require("mongoose");
 const { getConfig } = require("./env");
+const { logInfo, logWarn, logError } = require("../utils/logger");
 
 async function connectDB() {
   const config = getConfig();
@@ -9,7 +10,7 @@ async function connectDB() {
   const dnsServers = config.database.dnsServers;
 
   if (!uri) {
-    console.error("MONGO_URI is not set in .env — cannot start server.");
+    logError("database.config_missing", { key: "MONGO_URI" });
     process.exit(1);
   }
 
@@ -26,18 +27,21 @@ async function connectDB() {
       connectTimeoutMS: 10000,
       ...(dbName ? { dbName } : {}),
     });
-    console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+    logInfo("database.connected", {
+      host: mongoose.connection.host,
+      name: mongoose.connection.name,
+    });
   } catch (err) {
-    console.error("MongoDB connection failed:", err.message);
+    logError("database.connect_failed", { error: err });
     process.exit(1);
   }
 
   mongoose.connection.on("disconnected", () => {
-    console.warn("MongoDB disconnected.");
+    logWarn("database.disconnected");
   });
 
   mongoose.connection.on("error", (err) => {
-    console.error("MongoDB connection error:", err.message);
+    logError("database.error", { error: err });
   });
 }
 

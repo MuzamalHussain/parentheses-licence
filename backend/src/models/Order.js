@@ -85,6 +85,11 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ userId: 1, status: 1 });
+orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ gateway: 1, createdAt: -1 });
+orderSchema.index({ status: 1, currency: 1 });
 orderSchema.index({ gateway: 1, gatewayCheckoutId: 1 });
 orderSchema.index({ status: 1, expiresAt: 1 }); // for the future auto-expire cron
 

@@ -2,12 +2,14 @@ const asyncHandler = require("express-async-handler");
 const SupportTicket = require("../models/SupportTicket");
 const License = require("../models/License");
 const { AppError } = require("../utils/errorHandler");
+const { getPagination, paginationMeta } = require("../utils/pagination");
+const performanceConfig = require("../config/performance");
 
 // GET /api/v1/support/tickets — customer's own tickets
 exports.getMyTickets = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(50, parseInt(req.query.limit) || 20);
-  const skip  = (page - 1) * limit;
+  const { page, limit, skip } = getPagination(req.query, {
+    maxLimit: performanceConfig.pagination.customerMaxLimit,
+  });
 
   const filter = { userId: req.user._id };
   if (req.query.status) filter.status = req.query.status;
@@ -16,14 +18,15 @@ exports.getMyTickets = asyncHandler(async (req, res) => {
     SupportTicket.find(filter)
       .select("-messages") // list view doesn't need full thread
       .sort({ lastMessageAt: -1 })
-      .skip(skip).limit(limit),
+      .skip(skip).limit(limit)
+      .lean(),
     SupportTicket.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
     data: tickets,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 
@@ -41,7 +44,7 @@ exports.createTicket = asyncHandler(async (req, res) => {
   const { subject, message, licenseId } = req.body;
 
   if (licenseId) {
-    const license = await License.findOne({ _id: licenseId, userId: req.user._id });
+    const license = await License.exists({ _id: licenseId, userId: req.user._id });
     if (!license) throw new AppError("License not found on your account.", 404);
   }
 

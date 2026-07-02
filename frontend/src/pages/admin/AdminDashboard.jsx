@@ -1,4 +1,4 @@
-import { Users, Key, ShoppingCart, Package, Clock, AlertTriangle, Loader2 } from "lucide-react";
+import { Users, Key, Package, AlertTriangle, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAdminDashboard } from "../../hooks/useLicenses";
 import StatusBadge from "../../components/ui/StatusBadge";

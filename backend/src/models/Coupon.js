@@ -40,6 +40,9 @@ const couponSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+couponSchema.index({ isActive: 1, createdAt: -1 });
+couponSchema.index({ expiresAt: 1 }, { sparse: true });
+
 couponSchema.methods.isValid = function () {
   if (!this.isActive) return false;
   if (this.expiresAt && new Date() > this.expiresAt) return false;

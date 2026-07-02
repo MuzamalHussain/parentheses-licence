@@ -100,6 +100,8 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1 });
+userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ isActive: 1, createdAt: -1 });
 
 userSchema.methods.comparePassword = async function (plainPassword) {
   return bcrypt.compare(plainPassword, this.passwordHash);

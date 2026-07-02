@@ -1,5 +1,6 @@
 const Redis = require("ioredis");
 const { getConfig } = require("./env");
+const { logInfo, logWarn, logError } = require("../utils/logger");
 
 let client = null;
 let isConnected = false;
@@ -13,7 +14,7 @@ function getRedisClient() {
   if (client) return client;
 
   if (!config.security.redisEnabled) {
-    console.log("[Redis] REDIS_ENABLED=false — skipping Redis, rate limiter will use in-memory store.");
+    logInfo("redis.disabled", { reason: "REDIS_ENABLED=false" });
     return null;
   }
 
@@ -24,12 +25,12 @@ function getRedisClient() {
     connectTimeout: 5000,
   });
 
-  client.on("connect",  () => { isConnected = true;  console.log("[Redis] Connected."); });
-  client.on("error",    (e) => { isConnected = false; console.error("[Redis] Error:", e.message); });
+  client.on("connect",  () => { isConnected = true;  logInfo("redis.connected"); });
+  client.on("error",    (e) => { isConnected = false; logError("redis.error", { error: e }); });
   client.on("close",    () => { isConnected = false; });
 
   client.connect().catch((e) => {
-    console.error("[Redis] Initial connect failed:", e.message);
+    logWarn("redis.initial_connect_failed", { error: e });
     client = null;
   });
 

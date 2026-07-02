@@ -1,0 +1,24 @@
+{
+  "name": "parentheses-licence",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Release engineering workspace for Parentheses Licence.",
+  "scripts": {
+    "dev": "npm --prefix backend run dev",
+    "start": "npm --prefix backend run start",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "npm --prefix backend run lint",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
+    "format:check": "node scripts/check-format.js",
+    "security:check": "npm --prefix backend audit --audit-level=high && npm --prefix frontend audit --audit-level=high",
+    "ci": "npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test && npm run verify:release",
+    "verify:workflows": "node scripts/verify-workflows.js",
+    "verify:release": "npm run verify:workflows && node scripts/generate-release-summary.js",
+    "artifacts:validate": "node scripts/validate-artifacts.js"
+  }
+}

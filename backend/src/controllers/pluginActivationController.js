@@ -3,26 +3,43 @@ const License = require("../models/License");
 const LicenseActivation = require("../models/LicenseActivation");
 const PluginVersion = require("../models/PluginVersion");
 const { AppError } = require("../utils/errorHandler");
-const { normalizeDomain, isValidDomain } = require("../utils/domain");
+const { normalizeDomain, isValidDomain, domainPolicyViolation } = require("../utils/domain");
 const { writeAuditLog } = require("../utils/auditLog");
 const { isNewerVersion } = require("../utils/semver");
+const licenseEngineConfig = require("../config/licenseEngine");
 
 const populateLicenseForPlugin = (query) =>
   query
     .populate("productId", "name slug status")
-    .populate("planId", "name allowedSites");
+    .populate("planId", "name allowedSites")
+    .populate("userId", "_id status");
+
+function isPastExpiry(expiresAt) {
+  if (!expiresAt) return false;
+  const graceMs = licenseEngineConfig.expiration.gracePeriodDays * 24 * 60 * 60 * 1000;
+  return Date.now() > new Date(expiresAt).getTime() + graceMs;
+}
 
 async function resolveLicense(licenseKey, productSlug) {
   const license = await populateLicenseForPlugin(License.findOne({ licenseKey }));
 
   if (!license) return { error: "License key not found.", code: 404 };
+  if (!license.userId) return { error: "Customer account not found.", code: 403 };
+  if (!license.productId) return { error: "Product not found.", code: 403 };
+  if (!license.planId) return { error: "License plan not found.", code: 403 };
   if (license.status === "revoked") return { error: "This license has been revoked.", code: 403 };
   if (license.status === "suspended") return { error: "This license is currently suspended. Contact support.", code: 403 };
   if (license.status === "expired") return { error: "This license has expired.", code: 403 };
 
-  if (license.expiresAt && new Date() > license.expiresAt) {
+  if (isPastExpiry(license.expiresAt)) {
     license.status = "expired";
     await license.save({ validateBeforeSave: false });
+    await writeAuditLog({
+      action: "license.expired",
+      targetType: "License",
+      targetId: license._id,
+      metadata: { licenseKey: maskLicenseKey(license.licenseKey), expiresAt: license.expiresAt },
+    });
     return { error: "This license has expired.", code: 403 };
   }
 
@@ -35,6 +52,16 @@ async function resolveLicense(licenseKey, productSlug) {
   }
 
   return { license };
+}
+
+function validateDomainInput(domain) {
+  const normalizedDomain = normalizeDomain(domain);
+  if (!isValidDomain(normalizedDomain)) return { error: "Invalid domain format.", code: 422 };
+
+  const policyError = domainPolicyViolation(normalizedDomain, licenseEngineConfig.activation);
+  if (policyError) return { error: "This domain is not allowed for activation.", code: 403, policyError };
+
+  return { normalizedDomain };
 }
 
 function safeResponse(license, message) {
@@ -62,6 +89,36 @@ async function reloadLicenseForResponse(licenseId) {
   return populateLicenseForPlugin(License.findById(licenseId));
 }
 
+async function auditPublicLicenseEvent({ req, action, license = null, licenseKey = "", domain = "", reason = "" }) {
+  await writeAuditLog({
+    action,
+    targetType: license ? "License" : "",
+    targetId: license?._id || null,
+    metadata: {
+      licenseKey: maskLicenseKey(license?.licenseKey || licenseKey),
+      domain,
+      reason,
+    },
+    ip: req.ip,
+  });
+}
+
+async function failedValidation(res, { req, license = null, licenseKey = "", domain = "", reason = "", code = 403 }) {
+  await auditPublicLicenseEvent({
+    req,
+    action: "license.validation_failed",
+    license,
+    licenseKey,
+    domain,
+    reason,
+  });
+  return res.status(code).json({
+    success: false,
+    valid: false,
+    message: "License is invalid or not entitled for this domain.",
+  });
+}
+
 function limitExceededResponse(res, license) {
   const siteLimit = license.allowedSites;
   return res.status(403).json({
@@ -79,8 +136,11 @@ exports.activate = asyncHandler(async (req, res) => {
   if (!licenseKey) throw new AppError("licenseKey is required.", 422);
   if (!domain) throw new AppError("domain is required.", 422);
 
-  const normalizedDomain = normalizeDomain(domain);
-  if (!isValidDomain(normalizedDomain)) throw new AppError("Invalid domain format.", 422);
+  const { normalizedDomain, error: domainError, code: domainCode, policyError } = validateDomainInput(domain);
+  if (domainError) {
+    await auditPublicLicenseEvent({ req, action: "license.suspicious_activity", licenseKey, domain, reason: policyError || "invalid_domain" });
+    throw new AppError(domainError, domainCode);
+  }
 
   const normalizedKey = licenseKey.toUpperCase().trim();
   console.log("[License Activation]", {
@@ -90,7 +150,10 @@ exports.activate = asyncHandler(async (req, res) => {
   });
 
   const { license, error, code } = await resolveLicense(normalizedKey, productSlug);
-  if (error) return res.status(code).json({ success: false, message: error });
+  if (error) {
+    await auditPublicLicenseEvent({ req, action: "license.activation_failed", licenseKey: normalizedKey, domain: normalizedDomain, reason: error });
+    return res.status(code).json({ success: false, message: error });
+  }
 
   if (license.activeDomains.some((d) => d.domain === normalizedDomain)) {
     console.log("[License Activation]", {
@@ -108,7 +171,7 @@ exports.activate = asyncHandler(async (req, res) => {
       status: "active",
       "activeDomains.domain": { $ne: normalizedDomain },
       $and: [
-        { $or: [{ expiresAt: null }, { expiresAt: { $gt: activatedAt } }] },
+        { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date(activatedAt.getTime() - (licenseEngineConfig.expiration.gracePeriodDays * 24 * 60 * 60 * 1000)) } }] },
         {
           $or: [
             { allowedSites: 0 },
@@ -142,7 +205,7 @@ exports.activate = asyncHandler(async (req, res) => {
     if (latest.status === "revoked") {
       return res.status(403).json({ success: false, message: "This license has been revoked." });
     }
-    if (latest.status === "expired" || (latest.expiresAt && new Date() > latest.expiresAt)) {
+    if (latest.status === "expired" || isPastExpiry(latest.expiresAt)) {
       return res.status(403).json({ success: false, message: "This license has expired." });
     }
 
@@ -188,8 +251,8 @@ exports.deactivate = asyncHandler(async (req, res) => {
   if (!licenseKey) throw new AppError("licenseKey is required.", 422);
   if (!domain) throw new AppError("domain is required.", 422);
 
-  const normalizedDomain = normalizeDomain(domain);
-  if (!isValidDomain(normalizedDomain)) throw new AppError("Invalid domain format.", 422);
+  const { normalizedDomain, error: domainError, code: domainCode } = validateDomainInput(domain);
+  if (domainError) throw new AppError(domainError, domainCode);
 
   const normalizedKey = licenseKey.toUpperCase().trim();
   const { license, error, code } = await resolveLicense(normalizedKey, productSlug);
@@ -235,29 +298,27 @@ exports.check = asyncHandler(async (req, res) => {
   const { licenseKey, domain, product: productSlug } = req.body;
 
   if (!licenseKey) throw new AppError("licenseKey is required.", 422);
+  if (!domain) throw new AppError("domain is required.", 422);
+
+  const { normalizedDomain, error: domainError, code: domainCode, policyError } = validateDomainInput(domain);
+  if (domainError) {
+    return failedValidation(res, { req, licenseKey, domain, reason: policyError || "invalid_domain", code: domainCode });
+  }
 
   const { license, error, code } = await resolveLicense(
     licenseKey.toUpperCase().trim(),
     productSlug
   );
-  if (error) return res.status(code).json({ success: false, message: error, valid: false });
-
-  const normalizedDomain = domain ? normalizeDomain(domain) : null;
-  let domainValid = true;
-
-  if (normalizedDomain) {
-    const isActivated = license.activeDomains.some((d) => d.domain === normalizedDomain);
-    if (!isActivated) {
-      domainValid = false;
-      return res.status(403).json({
-        success: false,
-        valid: false,
-        message: "This domain is not activated for this license.",
-        licenseKey: license.licenseKey,
-        status: license.status,
-      });
-    }
+  if (error) {
+    return failedValidation(res, { req, licenseKey, domain: normalizedDomain, reason: error, code });
   }
+
+  const domainValid = license.activeDomains.some((d) => d.domain === normalizedDomain);
+  if (!domainValid) {
+    return failedValidation(res, { req, license, domain: normalizedDomain, reason: "domain_not_activated" });
+  }
+
+  await auditPublicLicenseEvent({ req, action: "license.validated", license, domain: normalizedDomain });
 
   return res.json({
     ...safeResponse(license, "License is valid."),
@@ -274,9 +335,10 @@ exports.replaceDomain = asyncHandler(async (req, res) => {
   if (!newDomain) throw new AppError("newDomain is required.", 422);
 
   const normOld = normalizeDomain(oldDomain);
-  const normNew = normalizeDomain(newDomain);
+  const { normalizedDomain: normNew, error: domainError, code: domainCode } = validateDomainInput(newDomain);
 
-  if (!isValidDomain(normNew)) throw new AppError("Invalid newDomain format.", 422);
+  if (domainError) throw new AppError(domainError, domainCode);
+  if (!isValidDomain(normOld)) throw new AppError("Invalid oldDomain format.", 422);
   if (normOld === normNew) throw new AppError("oldDomain and newDomain are the same.", 422);
 
   const { license, error, code } = await resolveLicense(
@@ -318,19 +380,25 @@ exports.updateCheck = asyncHandler(async (req, res) => {
 
   if (!licenseKey) throw new AppError("licenseKey is required.", 422);
   if (!currentVersion) throw new AppError("currentVersion is required.", 422);
+  if (!domain) throw new AppError("domain is required.", 422);
+
+  const { normalizedDomain, error: domainError, code: domainCode, policyError } = validateDomainInput(domain);
+  if (domainError) {
+    return failedValidation(res, { req, licenseKey, domain, reason: policyError || "invalid_domain", code: domainCode });
+  }
 
   const { license, error, code } = await resolveLicense(
     licenseKey.toUpperCase().trim(),
     productSlug
   );
   if (error) {
-    return res.status(code).json({ success: false, message: error, updateAvailable: false });
+    return res.status(code).json({ success: false, message: "License is invalid or not entitled for this domain.", updateAvailable: false });
   }
 
-  let domainActivated = true;
-  if (domain) {
-    const normalizedDomain = normalizeDomain(domain);
-    domainActivated = license.activeDomains.some((d) => d.domain === normalizedDomain);
+  const domainActivated = license.activeDomains.some((d) => d.domain === normalizedDomain);
+  if (!domainActivated) {
+    await auditPublicLicenseEvent({ req, action: "license.validation_failed", license, domain: normalizedDomain, reason: "domain_not_activated" });
+    return res.status(403).json({ success: false, message: "License is invalid or not entitled for this domain.", updateAvailable: false });
   }
 
   const latest = await PluginVersion.findOne({

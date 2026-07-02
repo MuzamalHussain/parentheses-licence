@@ -62,5 +62,6 @@ const pluginVersionSchema = new mongoose.Schema(
 // One version number per product
 pluginVersionSchema.index({ productId: 1, versionNumber: 1 }, { unique: true });
 pluginVersionSchema.index({ productId: 1, isPublished: 1, createdAt: -1 });
+pluginVersionSchema.index({ productId: 1, releasedAt: -1, createdAt: -1 });
 
 module.exports = mongoose.model("PluginVersion", pluginVersionSchema);

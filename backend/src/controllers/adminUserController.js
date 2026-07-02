@@ -2,12 +2,11 @@ const asyncHandler = require("express-async-handler");
 const User = require("../models/User");
 const { AppError } = require("../utils/errorHandler");
 const { ROLES } = require("../utils/constants");
+const { getPagination, paginationMeta } = require("../utils/pagination");
 
 // GET /api/v1/admin/users
 exports.getUsers = asyncHandler(async (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, parseInt(req.query.limit) || 20);
-  const skip = (page - 1) * limit;
+  const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
   if (req.query.role) filter.role = req.query.role;
@@ -19,14 +18,19 @@ exports.getUsers = asyncHandler(async (req, res) => {
   }
 
   const [users, total] = await Promise.all([
-    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    User.find(filter)
+      .select("name email role companyName emailVerified twoFactorEnabled isActive createdAt")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     User.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
-    data: users.map((u) => u.toSafeJSON()),
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    data: users.map((u) => ({ ...u, id: u._id })),
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 

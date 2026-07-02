@@ -54,6 +54,13 @@ const licenseSchema = new mongoose.Schema(
     activeDomains: {
       type: [activeDomainSchema],
       default: [],
+      validate: {
+        validator(domains) {
+          const normalized = domains.map((entry) => entry.domain);
+          return normalized.length === new Set(normalized).size;
+        },
+        message: "Duplicate active domains are not allowed on a license.",
+      },
     },
     expiresAt: {
       type: Date,
@@ -77,6 +84,12 @@ const licenseSchema = new mongoose.Schema(
 // Compound indexes for common queries
 licenseSchema.index({ userId: 1, status: 1 });
 licenseSchema.index({ productId: 1, status: 1 });
+licenseSchema.index({ userId: 1, createdAt: -1 });
+licenseSchema.index({ userId: 1, status: 1, createdAt: -1 });
+licenseSchema.index({ productId: 1, status: 1, createdAt: -1 });
+licenseSchema.index({ status: 1, createdAt: -1 });
+licenseSchema.index({ planId: 1 });
+licenseSchema.index({ "activeDomains.domain": 1 });
 licenseSchema.index({ expiresAt: 1 }, { sparse: true });
 licenseSchema.index(
   { orderId: 1 },

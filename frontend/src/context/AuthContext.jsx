@@ -30,7 +30,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await api.post("/auth/logout"); } catch {}
+    try { await api.post("/auth/logout"); } catch {
+      // Logout remains local even if the server session is already gone.
+    }
     localStorage.removeItem("accessToken");
     setUser(null);
   }, []);

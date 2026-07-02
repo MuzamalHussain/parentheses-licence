@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node tests/phase7b-webhook-reliability.test.js && node tests/phase7c-payment-transaction-safety.test.js && node tests/phase7d-license-activation-race.test.js && node tests/phase7e-psp-gateway-hardening.test.js && node tests/phase7f-wordpress-updater-flow.test.js && node tests/phase7g-plugin-upload-security.test.js && node tests/phase7h-auth-session-security.test.js && node tests/phase7i-notification-infrastructure.test.js",
+    "build": "node scripts/verify-backend-build.js",
+    "lint": "node scripts/lint-js.js",
+    "typecheck": "node -e \"console.log('No TypeScript configured for backend; typecheck skipped.')\"",
+    "test": "node tests/phase7b-webhook-reliability.test.js && node tests/phase7c-payment-transaction-safety.test.js && node tests/phase7d-license-activation-race.test.js && node tests/phase7e-psp-gateway-hardening.test.js && node tests/phase7f-wordpress-updater-flow.test.js && node tests/phase7g-plugin-upload-security.test.js && node tests/phase7h-auth-session-security.test.js && node tests/phase7i-notification-infrastructure.test.js && node tests/phase7j-license-engine-hardening.test.js && node tests/phase7k-api-security-hardening.test.js && node tests/phase7l-performance-scalability.test.js && node tests/phase7m-observability.test.js && node tests/phase7n-operational-resilience.test.js && node tests/phase8a-release-engineering.test.js",
     "test:phase7b": "node tests/phase7b-webhook-reliability.test.js",
     "test:phase7d": "node tests/phase7d-license-activation-race.test.js",
     "test:phase7e": "node tests/phase7e-psp-gateway-hardening.test.js",
@@ -15,6 +18,13 @@
     "test:phase7g": "node tests/phase7g-plugin-upload-security.test.js",
     "test:phase7h": "node tests/phase7h-auth-session-security.test.js",
     "test:phase7i": "node tests/phase7i-notification-infrastructure.test.js",
+    "test:phase7j": "node tests/phase7j-license-engine-hardening.test.js",
+    "test:phase7k": "node tests/phase7k-api-security-hardening.test.js",
+    "test:phase7l": "node tests/phase7l-performance-scalability.test.js",
+    "test:phase7m": "node tests/phase7m-observability.test.js",
+    "test:phase7n": "node tests/phase7n-operational-resilience.test.js",
+    "test:phase8a": "node tests/phase8a-release-engineering.test.js",
+    "check:production-readiness": "node scripts/production-readiness-check.js",
     "check:phase7c-indexes": "node scripts/check-phase7c-duplicates.js"
   },
   "dependencies": {
@@ -33,7 +43,7 @@
     "mongoose": "^8.4.0",
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
-    "nodemailer": "^6.9.13",
+    "nodemailer": "^9.0.3",
     "rate-limit-redis": "^4.3.1",
     "stripe": "^22.2.2",
     "zod": "^3.23.8"

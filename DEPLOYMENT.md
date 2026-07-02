@@ -92,12 +92,16 @@ Put nginx or Caddy in front for TLS termination (Let's Encrypt) and proxy
 
 ### 2.7 Final pre-launch checklist
 - [ ] `NODE_ENV=production` is set
+- [ ] `APP_ENV=production` and `DEPLOYMENT_TARGET` match the host
 - [ ] All JWT/Stripe/PSP secrets are real, unique, and not reused from dev
 - [ ] `REDIS_ENABLED=true` with a real Redis instance (multi-instance-safe rate limiting)
 - [ ] MongoDB Atlas production cluster, IP-restricted, strong credentials
+- [ ] Persistent storage or object storage is configured for uploaded plugin ZIPs
+- [ ] Database snapshots and upload backups are configured outside the app process
+- [ ] Run `npm run check:production-readiness` inside the backend environment
 - [ ] Run `node scripts/e2e-smoke-test.js` against the deployed API (see below)
 - [ ] Confirm Stripe **and** local PSP webhooks each deliver a test event successfully
-- [ ] Confirm `/health` returns 200 from the public URL
+- [ ] Confirm `/health`, `/live`, and `/ready` from the public URL
 
 ## 3. Running the end-to-end smoke test
 
@@ -130,4 +134,3 @@ real auth flow. If your SMTP isn't configured yet in the environment you're
 testing, the customer login step may fail — that's expected and not a bug
 in the test; either configure a real SMTP provider first, or temporarily
 auto-verify in your dev database.
-

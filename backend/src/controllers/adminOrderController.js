@@ -3,11 +3,13 @@ const Order = require("../models/Order");
 const Payment = require("../models/Payment");
 const { AppError } = require("../utils/errorHandler");
 const { writeAuditLog } = require("../utils/auditLog");
+const { getPagination, paginationMeta } = require("../utils/pagination");
+const { getCached } = require("../utils/ttlCache");
+const performanceConfig = require("../config/performance");
 
 // GET /api/v1/admin/orders
 exports.getOrders = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(100, parseInt(req.query.limit) || 20);
+  const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
   if (req.query.status)  filter.status  = req.query.status;
@@ -16,19 +18,20 @@ exports.getOrders = asyncHandler(async (req, res) => {
   const [orders, total] = await Promise.all([
     Order.find(filter)
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit)
       .populate("userId", "name email")
       .populate("productId", "name")
       .populate("planId", "name")
-      .populate("licenseId", "licenseKey"),
+      .populate("licenseId", "licenseKey")
+      .lean(),
     Order.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
     data: orders,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });
 
@@ -38,28 +41,46 @@ exports.getOrder = asyncHandler(async (req, res) => {
     .populate("userId", "name email")
     .populate("productId", "name")
     .populate("planId", "name")
-    .populate("licenseId", "licenseKey status");
+    .populate("licenseId", "licenseKey status")
+    .lean();
   if (!order) throw new AppError("Order not found.", 404);
 
-  const payments = await Payment.find({ orderId: order._id }).sort({ createdAt: -1 });
+  const payments = await Payment.find({ orderId: order._id }).sort({ createdAt: -1 }).lean();
 
   res.json({ success: true, data: { order, payments } });
 });
 
 // GET /api/v1/admin/orders/stats
 exports.getOrderStats = asyncHandler(async (req, res) => {
-  const statusCounts = await Order.aggregate([
-    { $group: { _id: "$status", count: { $sum: 1 }, total: { $sum: "$amount" } } },
-  ]);
+  const data = await getCached("admin:orders:stats:v1", performanceConfig.cache.statsTtlMs, async () => {
+    const statusCounts = await Order.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalRevenueUSD: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ["$status", "paid"] }, { $eq: ["$currency", "USD"] }] },
+                "$amount",
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
-  const stats = { pending: 0, paid: 0, failed: 0, expired: 0, refunded: 0 };
-  let totalRevenueUSD = 0;
-  statusCounts.forEach(({ _id, count }) => { if (_id in stats) stats[_id] = count; });
+    const stats = { pending: 0, paid: 0, failed: 0, expired: 0, refunded: 0 };
+    let totalRevenueUSD = 0;
+    statusCounts.forEach(({ _id, count, totalRevenueUSD: revenue }) => {
+      if (_id in stats) stats[_id] = count;
+      totalRevenueUSD += revenue || 0;
+    });
+    return { stats, totalRevenueUSD };
+  });
 
-  const paidOrders = await Order.find({ status: "paid" }).select("amount currency");
-  paidOrders.forEach((o) => { if (o.currency === "USD") totalRevenueUSD += o.amount; });
-
-  res.json({ success: true, data: { stats, totalRevenueUSD } });
+  res.json({ success: true, data });
 });
 
 // POST /api/v1/admin/orders/:id/mark-refunded

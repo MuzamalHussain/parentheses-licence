@@ -48,5 +48,6 @@ paymentSchema.index(
     partialFilterExpression: { gatewayTransactionId: { $type: "string", $gt: "" } },
   }
 );
+paymentSchema.index({ orderId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Payment", paymentSchema);

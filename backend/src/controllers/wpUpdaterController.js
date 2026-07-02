@@ -8,8 +8,10 @@ const { hashToken } = require("../utils/downloadToken");
 const { createUpdaterToken, verifyUpdaterToken } = require("../utils/updaterToken");
 const { normalizeDomain, isValidDomain } = require("../utils/domain");
 const { isNewerVersion } = require("../utils/semver");
+const { writeAuditLog } = require("../utils/auditLog");
+const licenseEngineConfig = require("../config/licenseEngine");
 
-const TOKEN_TTL_MS = 10 * 60 * 1000;
+const TOKEN_TTL_MS = licenseEngineConfig.downloads.updaterTokenTtlMs;
 const UPDATE_PURPOSE = "wordpress_update";
 
 function isPast(dateValue) {
@@ -41,9 +43,11 @@ function versionSort(sortable) {
 async function resolveEntitlement({ licenseKey, pluginSlug, normalizedDomain }) {
   const license = await License.findOne({ licenseKey })
     .populate("productId", "name slug status")
-    .populate("planId", "name");
+    .populate("planId", "name")
+    .populate("userId", "_id status");
 
   if (!license) return { error: "invalid_license" };
+  if (!license.userId) return { error: "customer_missing" };
   if (license.status !== "active") return { error: "inactive_license" };
   if (isPast(license.expiresAt)) return { error: "expired_license" };
   if (!license.productId || license.productId.slug !== pluginSlug) return { error: "not_entitled" };
@@ -109,7 +113,16 @@ exports.check = asyncHandler(async (req, res) => {
     pluginSlug: normalizedPluginSlug,
     normalizedDomain,
   });
-  if (error) return unauthorized(res);
+  if (error) {
+    await writeAuditLog({
+      action: "license.validation_failed",
+      targetType: license ? "License" : "",
+      targetId: license?._id || null,
+      metadata: { pluginSlug: normalizedPluginSlug, domain: normalizedDomain, reason: error },
+      ip: req.ip,
+    });
+    return unauthorized(res);
+  }
 
   const latest = await latestPublishedVersion(license.productId._id);
   if (!latest || !isNewerVersion(latest.versionNumber, currentVersion)) {
@@ -135,6 +148,14 @@ exports.check = asyncHandler(async (req, res) => {
     domain: normalizedDomain,
     license: maskLicenseKey(normalizedLicenseKey),
     version: latest.versionNumber,
+  });
+
+  await writeAuditLog({
+    action: "license.download_authorized",
+    targetType: "License",
+    targetId: license._id,
+    metadata: { purpose: UPDATE_PURPOSE, pluginSlug: normalizedPluginSlug, domain: normalizedDomain, version: latest.versionNumber },
+    ip: req.ip,
   });
 
   return res.json({
@@ -203,8 +224,14 @@ exports.download = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: "The requested file is no longer available." });
   }
 
-  download.usedAt = new Date();
-  await download.save();
+  const consumed = await Download.findOneAndUpdate(
+    { _id: download._id, usedAt: null, expiresAt: { $gt: new Date() }, purpose: UPDATE_PURPOSE },
+    { $set: { usedAt: new Date() } },
+    { new: true }
+  );
+  if (!consumed) {
+    return res.status(403).json({ success: false, message: "This update package link has already been used." });
+  }
 
   const filename = version.originalFileName || `${license.productId.slug || "plugin"}-${version.versionNumber}.zip`;
   res.setHeader("Content-Type", "application/zip");
@@ -216,6 +243,14 @@ exports.download = asyncHandler(async (req, res) => {
     pluginSlug: license.productId.slug,
     domain: download.domain,
     version: version.versionNumber,
+  });
+
+  await writeAuditLog({
+    action: "license.download_completed",
+    targetType: "License",
+    targetId: license._id,
+    metadata: { purpose: UPDATE_PURPOSE, pluginSlug: license.productId.slug, domain: download.domain, version: version.versionNumber },
+    ip: req.ip,
   });
 
   const stream = fs.createReadStream(normalizedPath);

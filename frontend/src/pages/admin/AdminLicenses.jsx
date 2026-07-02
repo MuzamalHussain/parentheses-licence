@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
-  Key, Plus, Search, RefreshCw, Ban, CheckCircle, Trash2,
+  Key, Plus, Search, Ban, CheckCircle, Trash2,
   RotateCcw, Loader2, ChevronDown, X, Copy, Check
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import toast from "react-hot-toast";
 import api from "../../lib/api";
 import { Button, Input, FormField, Alert } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";

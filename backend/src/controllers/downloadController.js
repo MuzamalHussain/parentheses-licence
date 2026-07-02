@@ -6,8 +6,12 @@ const PluginVersion = require("../models/PluginVersion");
 const Download = require("../models/Download");
 const { AppError } = require("../utils/errorHandler");
 const { hashToken, generateRawToken } = require("../utils/downloadToken");
+const { writeAuditLog } = require("../utils/auditLog");
+const licenseEngineConfig = require("../config/licenseEngine");
+const { getPagination, paginationMeta } = require("../utils/pagination");
+const performanceConfig = require("../config/performance");
 
-const TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes, single-use
+const TOKEN_TTL_MS = licenseEngineConfig.downloads.customerTokenTtlMs; // single-use
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/downloads/request
@@ -20,10 +24,11 @@ exports.requestDownload = asyncHandler(async (req, res) => {
 
   if (!licenseId) throw new AppError("licenseId is required.", 422);
 
-  const license = await License.findOne({ _id: licenseId, userId: req.user._id });
+  const license = await License.findOne({ _id: licenseId, userId: req.user._id }).populate("productId", "slug status");
   if (!license) throw new AppError("License not found.", 404);
   if (license.status !== "active") throw new AppError(`Your license is ${license.status}. Contact support for access.`, 403);
   if (license.expiresAt && new Date() > license.expiresAt) throw new AppError("Your license has expired.", 403);
+  if (!license.productId || license.productId.status === "archived") throw new AppError("Product is no longer available.", 403);
 
   let version;
   if (pluginVersionId) {
@@ -44,6 +49,15 @@ exports.requestDownload = asyncHandler(async (req, res) => {
     tokenHash: hashToken(rawToken),
     expiresAt,
     ipAddress: req.ip || "",
+  });
+
+  await writeAuditLog({
+    actor: req.user,
+    action: "license.download_authorized",
+    targetType: "License",
+    targetId: license._id,
+    metadata: { pluginVersionId: version._id, version: version.versionNumber },
+    ip: req.ip,
   });
 
   res.status(201).json({
@@ -67,7 +81,7 @@ exports.serveFile = asyncHandler(async (req, res) => {
   const { token } = req.params;
   const tokenHash = hashToken(token);
 
-  const download = await Download.findOne({ tokenHash });
+  const download = await Download.findOne({ tokenHash, purpose: "customer_download" });
 
   if (!download) {
     return res.status(403).json({ success: false, message: "This download link is invalid or has expired." });
@@ -86,14 +100,34 @@ exports.serveFile = asyncHandler(async (req, res) => {
 
   // Re-validate entitlement at download time too (license could've been
   // suspended/revoked in the gap between token request and actual download).
-  const license = await License.findById(download.licenseId);
-  if (!license || license.status !== "active") {
+  const license = await License.findById(download.licenseId).populate("productId", "slug status");
+  if (!license || license.status !== "active" || (license.expiresAt && new Date() > license.expiresAt)) {
     return res.status(403).json({ success: false, message: "Your license is no longer active." });
+  }
+  if (!license.productId || license.productId.status === "archived") {
+    return res.status(403).json({ success: false, message: "Product is no longer available." });
+  }
+  if (!version.isPublished || version.productId.toString() !== license.productId._id.toString()) {
+    return res.status(403).json({ success: false, message: "Your license is not entitled to this file." });
   }
 
   // Mark used BEFORE streaming — prevents replay even if the stream is interrupted
-  download.usedAt = new Date();
-  await download.save();
+  const consumed = await Download.findOneAndUpdate(
+    { _id: download._id, usedAt: null, expiresAt: { $gt: new Date() }, purpose: "customer_download" },
+    { $set: { usedAt: new Date() } },
+    { new: true }
+  );
+  if (!consumed) {
+    return res.status(403).json({ success: false, message: "This download link has already been used. Request a new one." });
+  }
+
+  await writeAuditLog({
+    action: "license.download_completed",
+    targetType: "License",
+    targetId: license._id,
+    metadata: { pluginVersionId: version._id, version: version.versionNumber },
+    ip: req.ip,
+  });
 
   const filename = `${version.originalFileName || `plugin-v${version.versionNumber}.zip`}`;
   res.setHeader("Content-Type", "application/zip");
@@ -110,22 +144,24 @@ exports.serveFile = asyncHandler(async (req, res) => {
 // GET /api/v1/downloads/history — customer's own past downloads
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getMyDownloadHistory = asyncHandler(async (req, res) => {
-  const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(50, parseInt(req.query.limit) || 20);
+  const { page, limit, skip } = getPagination(req.query, {
+    maxLimit: performanceConfig.pagination.customerMaxLimit,
+  });
 
   const [downloads, total] = await Promise.all([
     Download.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit)
       .populate("pluginVersionId", "versionNumber")
-      .populate("licenseId", "licenseKey"),
+      .populate("licenseId", "licenseKey")
+      .lean(),
     Download.countDocuments({ userId: req.user._id }),
   ]);
 
   res.json({
     success: true,
     data: downloads,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta({ page, limit, total }),
   });
 });

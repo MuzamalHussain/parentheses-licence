@@ -35,6 +35,7 @@ function createHarness({ allowedSites = 1, status = "active", expiresAt = null }
   const store = {
     license: {
       _id: "lic_1",
+      userId: { _id: "user_1", status: "active" },
       licenseKey: "TEST-KEY1-KEY2-KEY3",
       status,
       allowedSites,

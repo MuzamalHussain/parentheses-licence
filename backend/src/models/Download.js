@@ -55,5 +55,9 @@ const downloadSchema = new mongoose.Schema(
 );
 
 downloadSchema.index({ userId: 1, createdAt: -1 });
+downloadSchema.index({ userId: 1, purpose: 1, createdAt: -1 });
+downloadSchema.index({ licenseId: 1, createdAt: -1 });
+downloadSchema.index({ pluginVersionId: 1, createdAt: -1 });
+downloadSchema.index({ purpose: 1, usedAt: 1, expiresAt: 1 });
 
 module.exports = mongoose.model("Download", downloadSchema);

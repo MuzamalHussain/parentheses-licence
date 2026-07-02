@@ -3,15 +3,9 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 const { requireAuth } = require("../middleware/auth");
 const { validate, registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } = require("../validators/schemas");
-const rateLimit = require("express-rate-limit");
+const { makeRateLimiter } = require("../middleware/apiSecurity");
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { success: false, message: "Too many attempts. Please try again in 15 minutes." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const authLimiter = makeRateLimiter("auth");
 
 router.post("/register", authLimiter, validate(registerSchema), authController.register);
 router.post("/login", authLimiter, validate(loginSchema), authController.login);

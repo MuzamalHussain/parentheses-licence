@@ -4,7 +4,7 @@ const fs = require("fs");
 const { AppError } = require("../utils/errorHandler");
 const { getConfig } = require("../config/env");
 
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads", "plugins");
+const UPLOAD_DIR = path.resolve(__dirname, "..", "..", getConfig().storage.pluginUploadDir);
 
 // Ensure the upload directory exists (non-public — never served by static middleware)
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });

@@ -7,6 +7,15 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const { errorHandler } = require("./utils/errorHandler");
 const { getConfig } = require("./config/env");
+const apiSecurityConfig = require("./config/apiSecurity");
+const {
+  requestContext,
+  requireJsonContentType,
+  apiAuditLogger,
+  makeRateLimiter,
+} = require("./middleware/apiSecurity");
+const { performanceLogger } = require("./middleware/performanceLogger");
+const healthRoutes = require("./routes/health");
 
 const app = express();
 const config = getConfig();
@@ -35,6 +44,9 @@ app.use(
 
 // ── Response compression ──────────────────────────────────────────────────────
 app.use(compression());
+app.use(requestContext);
+app.use(performanceLogger);
+app.use(apiAuditLogger);
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // Support a comma-separated list so both the customer portal/admin panel
@@ -59,11 +71,17 @@ app.use(
 // BEFORE express.json(), with express.raw() instead. Mounting them after
 // express.json() would have already consumed/transformed the body and
 // signature verification would fail on every single webhook delivery.
-app.use("/api/v1/webhooks", express.raw({ type: "application/json" }), require("./routes/webhooks"));
+app.use(
+  "/api/v1/webhooks",
+  makeRateLimiter("webhooks"),
+  express.raw({ type: "application/json", limit: apiSecurityConfig.body.webhookLimit }),
+  require("./routes/webhooks")
+);
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: apiSecurityConfig.body.jsonLimit }));
+app.use(express.urlencoded({ extended: true, limit: apiSecurityConfig.body.urlencodedLimit }));
 app.use(cookieParser());
+app.use(requireJsonContentType);
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 if (config.app.isDevelopment) app.use(morgan("dev"));
@@ -73,20 +91,21 @@ if (config.app.isDevelopment) app.use(morgan("dev"));
 // apply their own tighter limiters. This one is the overall ceiling per IP.
 app.use(
   rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 300,
-    message: { success: false, message: "Too many requests. Please slow down." },
+    windowMs: apiSecurityConfig.rateLimits.global.windowMs,
+    max: apiSecurityConfig.rateLimits.global.max,
+    message: (req) => ({ success: false, message: "Too many requests. Please slow down.", requestId: req.id }),
     standardHeaders: true,
     legacyHeaders: false,
   })
 );
 
 // ── Health check ──────────────────────────────────────────────────────────────
-app.get("/health", (req, res) => {
-  res.json({ success: true, message: "API is running.", env: config.app.nodeEnv });
-});
+app.use(healthRoutes);
 
 // ── API Routes ────────────────────────────────────────────────────────────────
+app.use("/api",                       require("./routes/apiVersions"));
+app.use("/api/v1/admin",               makeRateLimiter("admin"));
+app.use("/api/v1/downloads",           makeRateLimiter("downloads"));
 app.use("/api/v1/auth",                require("./routes/auth"));
 app.use("/api/v1/products",            require("./routes/products"));
 app.use("/api/v1/admin/users",         require("./routes/adminUsers"));
@@ -99,6 +118,7 @@ app.use("/api/v1/admin/coupons",       require("./routes/adminCoupons"));
 app.use("/api/v1/admin/support",       require("./routes/adminSupport"));
 app.use("/api/v1/admin/audit",         require("./routes/adminAudit"));
 app.use("/api/v1/admin/settings",      require("./routes/adminSettings"));
+app.use("/api/v1/admin/diagnostics",   require("./routes/adminDiagnostics"));
 app.use("/api/v1/licenses",            require("./routes/customerLicenses"));
 app.use("/api/v1/plugin",              require("./routes/plugin"));
 app.use("/api/wp/updater",             require("./routes/wpUpdater"));
@@ -108,7 +128,7 @@ app.use("/api/v1/support",             require("./routes/support"));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found.` });
+  res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found.`, requestId: req.id });
 });
 
 // ── Global error handler ──────────────────────────────────────────────────────

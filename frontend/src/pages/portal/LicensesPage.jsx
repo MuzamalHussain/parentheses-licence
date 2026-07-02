@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Key, Globe, Loader2, ChevronDown, Copy, Check, X, AlertCircle } from "lucide-react";
-import toast from "react-hot-toast";
+import { Key, Globe, Loader2, ChevronDown, Copy, Check, AlertCircle } from "lucide-react";
 import { useMyLicenses, useDeactivateDomain } from "../../hooks/useLicenses";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Pagination from "../../components/ui/Pagination";

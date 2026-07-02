@@ -1,7 +1,7 @@
 const express = require("express");
 const { z } = require("zod");
 const { requireAuth, requireRole } = require("../middleware/auth");
-const { validate } = require("../validators/schemas");
+const { validate, validateRequest } = require("../validators/schemas");
 const c = require("../controllers/adminSettingsController");
 
 const router = express.Router();
@@ -15,11 +15,14 @@ const settingValueSchema = z.object({
 const secretValueSchema = z.object({
   value: z.string().min(1),
 });
+const settingKeyParamSchema = z.object({
+  key: z.string().min(1).max(120).regex(/^[a-zA-Z0-9_.:-]+$/, "Invalid setting key."),
+});
 
 router.get("/", c.getSettings);
 router.get("/feature-flags", c.getFeatureFlags);
 router.get("/payment-providers", c.getPaymentProviders);
-router.patch("/:key", validate(settingValueSchema), c.updateSetting);
-router.patch("/:key/secret", validate(secretValueSchema), c.updateSecretSetting);
+router.patch("/:key", validateRequest({ params: settingKeyParamSchema }), validate(settingValueSchema), c.updateSetting);
+router.patch("/:key/secret", validateRequest({ params: settingKeyParamSchema }), validate(secretValueSchema), c.updateSecretSetting);
 
 module.exports = router;
