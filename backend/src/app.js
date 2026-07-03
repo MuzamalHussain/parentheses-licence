@@ -59,9 +59,10 @@ app.use(
       // Allow non-browser tools (curl, the WordPress plugin, server-to-server) with no Origin header
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
+      return callback(null, false);
     },
     credentials: true,
+    optionsSuccessStatus: 204,
   })
 );
 

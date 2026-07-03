@@ -22,12 +22,23 @@ const stringWithDefault = (defaultValue) =>
 
 const optionalString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
 
+function splitOrigins(...values) {
+  return [...new Set(
+    values
+      .filter(Boolean)
+      .flatMap((value) => String(value).split(","))
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  )];
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.enum(["development", "staging", "production", "test"]).optional(),
   DEPLOYMENT_TARGET: stringWithDefault("local"),
   PORT: z.coerce.number().int().positive().default(5000),
   CLIENT_URL: stringWithDefault("http://localhost:5173"),
+  CORS_ORIGIN: optionalString,
 
   MONGO_URI: z.string().min(1, "MONGO_URI is required"),
   MONGO_DB_NAME: stringWithDefault("parentheses_licensing"),
@@ -110,10 +121,10 @@ const envSchema = z.object({
       message: "JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET",
     });
   }
-  if (env.NODE_ENV === "production" && env.CLIENT_URL.split(",").map((origin) => origin.trim()).includes("*")) {
+  if (env.NODE_ENV === "production" && splitOrigins(env.CLIENT_URL, env.CORS_ORIGIN).includes("*")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["CLIENT_URL"],
+      path: ["CORS_ORIGIN"],
       message: "Wildcard CORS origins are not allowed in production",
     });
   }
@@ -136,7 +147,7 @@ function buildConfig() {
   }
 
   const env = parsed.data;
-  const clientOrigins = env.CLIENT_URL.split(",").map((origin) => origin.trim()).filter(Boolean);
+  const clientOrigins = splitOrigins(env.CLIENT_URL, env.CORS_ORIGIN);
 
   return {
     app: {

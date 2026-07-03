@@ -31,6 +31,7 @@ function mockAuditLog() {
 
 async function withServer(test) {
   mockAuditLog();
+  clearModule("src/config/env.js");
   clearModule("src/app.js");
   clearModule("src/middleware/apiSecurity.js");
   clearModule("src/config/apiSecurity.js");
@@ -43,6 +44,33 @@ async function withServer(test) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+async function withEnv(overrides, test) {
+  const previous = { ...process.env };
+  Object.assign(process.env, overrides);
+  try {
+    await test();
+  } finally {
+    process.env = previous;
+    [
+      "src/config/env.js",
+      "src/app.js",
+      "src/middleware/apiSecurity.js",
+      "src/config/apiSecurity.js",
+    ].forEach((relativePath) => {
+      try { clearModule(relativePath); } catch (_) {}
+    });
+  }
+}
+
+async function withCorsServer(test) {
+  await withEnv({
+    CLIENT_URL: "https://parentheses-licence.vercel.app",
+    CORS_ORIGIN: "https://parentheses-licence.vercel.app, http://localhost:5173",
+  }, async () => {
+    await withServer(test);
+  });
 }
 
 async function testApiVersionDiscoveryAndRequestId() {
@@ -142,6 +170,55 @@ async function testValidateRequestCoversParamsQueryHeaders() {
   assert.match(res.body.message, /params.id/);
 }
 
+async function testCorsAllowsVercelOrigin() {
+  await withCorsServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api`, {
+      headers: { Origin: "https://parentheses-licence.vercel.app" },
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.headers.get("access-control-allow-origin"), "https://parentheses-licence.vercel.app");
+  });
+}
+
+async function testCorsAllowsLocalhostOriginFromCorsOrigin() {
+  await withCorsServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api`, {
+      headers: { Origin: "http://localhost:5173" },
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.headers.get("access-control-allow-origin"), "http://localhost:5173");
+  });
+}
+
+async function testCorsRejectsUnknownOriginWithoutServerError() {
+  await withCorsServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api`, {
+      headers: { Origin: "https://unknown.example.test" },
+    });
+
+    assert.notStrictEqual(res.status, 500);
+    assert.strictEqual(res.headers.get("access-control-allow-origin"), null);
+  });
+}
+
+async function testCorsPreflightAllowedOriginReturns204() {
+  await withCorsServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:5173",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    });
+
+    assert.strictEqual(res.status, 204);
+    assert.strictEqual(res.headers.get("access-control-allow-origin"), "http://localhost:5173");
+  });
+}
+
 async function run() {
   const tests = [
     testApiVersionDiscoveryAndRequestId,
@@ -150,6 +227,10 @@ async function run() {
     testOversizedWebhookPayloadRejectedBeforeController,
     testLocalWebhookTimestampValidation,
     testValidateRequestCoversParamsQueryHeaders,
+    testCorsAllowsVercelOrigin,
+    testCorsAllowsLocalhostOriginFromCorsOrigin,
+    testCorsRejectsUnknownOriginWithoutServerError,
+    testCorsPreflightAllowedOriginReturns204,
   ];
 
   for (const test of tests) {
