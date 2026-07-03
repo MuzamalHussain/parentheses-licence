@@ -11,7 +11,7 @@ async function connectDB() {
 
   if (!uri) {
     logError("database.config_missing", { key: "MONGO_URI" });
-    process.exit(1);
+    throw new Error("MONGO_URI is required before database startup.");
   }
 
   if (dnsServers.length) {
@@ -33,7 +33,7 @@ async function connectDB() {
     });
   } catch (err) {
     logError("database.connect_failed", { error: err });
-    process.exit(1);
+    throw err;
   }
 
   mongoose.connection.on("disconnected", () => {

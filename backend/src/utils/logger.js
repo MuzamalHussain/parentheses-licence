@@ -25,6 +25,7 @@ function sanitizeLogData(value, key = "") {
     return {
       name: value.name,
       message: value.message,
+      stack: value.stack,
     };
   }
   if (Array.isArray(value)) {
