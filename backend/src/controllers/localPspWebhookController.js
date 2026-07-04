@@ -7,6 +7,7 @@ const {
 } = require("../utils/webhookGuard");
 const Order = require("../models/Order");
 const apiSecurityConfig = require("../config/apiSecurity");
+const { logError } = require("../utils/logger");
 
 function validateWebhookTimestamp(rawTimestamp) {
   if (!rawTimestamp) return false;
@@ -40,12 +41,12 @@ async function handleLocalPspWebhook(req, res) {
   const timestamp = req.headers["x-webhook-timestamp"] || req.headers["x-psp-timestamp"];
 
   if (!validateWebhookTimestamp(timestamp)) {
-    console.error("[Local PSP Webhook] Timestamp verification failed.");
+    logError("local_psp_webhook.timestamp_verification_failed");
     return res.status(400).json({ success: false, message: "Invalid webhook timestamp.", requestId: req.id });
   }
 
   if (!verifyWebhookSignature(rawBody, signature)) {
-    console.error("[Local PSP Webhook] Signature verification failed.");
+    logError("local_psp_webhook.signature_verification_failed");
     return res.status(400).json({ success: false, message: "Invalid signature.", requestId: req.id });
   }
 
@@ -93,7 +94,7 @@ async function handleLocalPspWebhook(req, res) {
     await markWebhookProcessed("local", eventId);
     res.json({ received: true });
   } catch (err) {
-    console.error("[Local PSP Webhook] Processing error:", err.message);
+    logError("local_psp_webhook.processing_failed", { error: err.message });
     await markWebhookFailed("local", eventId, err.message);
     res.status(500).json({ success: false, message: "Webhook processing failed.", requestId: req.id });
   }

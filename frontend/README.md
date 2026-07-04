@@ -1,16 +1,112 @@
-# React + Vite
+# Parentheses Licence Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite single page application for the customer portal and admin/support console.
 
-Currently, two official plugins are available:
+## Requirements
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 20 or newer for production parity.
+- Backend API reachable through `VITE_API_URL`.
 
-## React Compiler
+## Install
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+cd frontend
+npm install
+```
 
-## Expanding the ESLint configuration
+## Run Development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm run dev
+```
+
+Vite serves the app locally, typically at `http://localhost:5173`.
+
+## Environment
+
+Vite reads build-time variables prefixed with `VITE_`.
+
+```text
+VITE_API_URL=http://localhost:5000/api/v1
+```
+
+Production:
+
+```text
+VITE_API_URL=https://api.blogpoint.net/api/v1
+```
+
+The backend must allow the frontend origin through `CLIENT_URL` or `CORS_ORIGIN`.
+
+## Build
+
+```bash
+npm run build
+```
+
+The production output is `dist/`.
+
+## Preview
+
+```bash
+npm run preview
+```
+
+## Vercel Deployment
+
+Recommended settings:
+
+```text
+Root Directory: frontend
+Build Command: npm run build
+Output Directory: dist
+Environment: VITE_API_URL=https://api.blogpoint.net/api/v1
+```
+
+The included `vercel.json` rewrites all routes to `index.html`, which prevents browser refreshes on `/login`, `/dashboard`, and `/admin` from returning 404.
+
+## Routing Notes
+
+Public routes:
+
+- `/login`
+- `/register`
+- `/forgot-password`
+- `/reset-password`
+- `/verify-email`
+
+Customer/support/admin portal routes:
+
+- `/dashboard`
+- `/dashboard/plans`
+- `/dashboard/licenses`
+- `/dashboard/downloads`
+- `/dashboard/orders`
+- `/dashboard/support`
+
+Admin/support routes:
+
+- `/admin`
+- `/admin/products`
+- `/admin/licenses`
+- `/admin/users`
+- `/admin/orders`
+- `/admin/coupons`
+- `/admin/domains`
+- `/admin/downloads`
+- `/admin/support`
+- `/admin/audit`
+- `/admin/settings`
+
+The frontend stores the access token in `localStorage` and sends it as `Authorization: Bearer <token>`. The refresh token is an HTTP-only cookie sent with `withCredentials: true`.
+
+## Scripts
+
+```text
+npm run dev       Start Vite dev server
+npm run build     Build static assets
+npm run lint      Run ESLint
+npm test          Alias for lint
+npm run preview   Preview production build locally
+npm run typecheck Print no-TypeScript notice
+```

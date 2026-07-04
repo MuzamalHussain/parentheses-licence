@@ -6,6 +6,7 @@ const { AppError } = require("../utils/errorHandler");
 const { normalizeDomain, isValidDomain, domainPolicyViolation } = require("../utils/domain");
 const { writeAuditLog } = require("../utils/auditLog");
 const { isNewerVersion } = require("../utils/semver");
+const { logInfo } = require("../utils/logger");
 const licenseEngineConfig = require("../config/licenseEngine");
 
 const populateLicenseForPlugin = (query) =>
@@ -143,7 +144,7 @@ exports.activate = asyncHandler(async (req, res) => {
   }
 
   const normalizedKey = licenseKey.toUpperCase().trim();
-  console.log("[License Activation]", {
+  logInfo("license_activation.requested", {
     status: "requested",
     license: maskLicenseKey(normalizedKey),
     domain: normalizedDomain,
@@ -156,7 +157,7 @@ exports.activate = asyncHandler(async (req, res) => {
   }
 
   if (license.activeDomains.some((d) => d.domain === normalizedDomain)) {
-    console.log("[License Activation]", {
+    logInfo("license_activation.already_active", {
       status: "already_active",
       license: maskLicenseKey(normalizedKey),
       domain: normalizedDomain,
@@ -191,7 +192,7 @@ exports.activate = asyncHandler(async (req, res) => {
     if (!latest) return res.status(404).json({ success: false, message: "License key not found." });
 
     if (latest.activeDomains.some((d) => d.domain === normalizedDomain)) {
-      console.log("[License Activation]", {
+      logInfo("license_activation.already_active_after_race", {
         status: "already_active_after_race",
         license: maskLicenseKey(normalizedKey),
         domain: normalizedDomain,
@@ -209,7 +210,7 @@ exports.activate = asyncHandler(async (req, res) => {
       return res.status(403).json({ success: false, message: "This license has expired." });
     }
 
-    console.log("[License Activation]", {
+    logInfo("license_activation.limit_exceeded", {
       status: "limit_exceeded",
       license: maskLicenseKey(normalizedKey),
       domain: normalizedDomain,
@@ -235,7 +236,7 @@ exports.activate = asyncHandler(async (req, res) => {
     ip: req.ip,
   });
 
-  console.log("[License Activation]", {
+  logInfo("license_activation.created", {
     status: "created",
     license: maskLicenseKey(normalizedKey),
     domain: normalizedDomain,

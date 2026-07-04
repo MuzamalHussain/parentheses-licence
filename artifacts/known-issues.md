@@ -1,0 +1,9 @@
+# Known Issues - Parentheses Licence 1.0.0
+
+Generated: 2026-07-03T06:56:10.547Z
+
+- Local filesystem plugin ZIP storage requires persistent volume or external backup on ephemeral hosts.
+- Gateway refunds are recorded in-app, but issuing the external PSP/Stripe refund remains an operator action.
+- Frontend bundle currently emits a Vite chunk-size warning; build succeeds.
+- Frontend lint currently passes with React Compiler and hook dependency warnings.
+- Secret settings are env-managed until encrypted settings storage exists.

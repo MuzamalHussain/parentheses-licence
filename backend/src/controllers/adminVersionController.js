@@ -8,10 +8,11 @@ const { fileChecksum } = require("../utils/downloadToken");
 const { writeAuditLog } = require("../utils/auditLog");
 const { getConfig } = require("../config/env");
 const { ZipValidationError, validatePluginZip } = require("../utils/pluginZipValidator");
+const { logInfo, logWarn } = require("../utils/logger");
 
 function logUploadValidation(status, details) {
-  const logger = status === "accepted" ? console.log : console.warn;
-  logger("[Plugin Upload Security]", {
+  const logger = status === "accepted" ? logInfo : logWarn;
+  logger("plugin_upload_security.validation", {
     status,
     productId: details.productId,
     versionNumber: details.versionNumber,

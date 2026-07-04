@@ -9,6 +9,7 @@ const { createUpdaterToken, verifyUpdaterToken } = require("../utils/updaterToke
 const { normalizeDomain, isValidDomain } = require("../utils/domain");
 const { isNewerVersion } = require("../utils/semver");
 const { writeAuditLog } = require("../utils/auditLog");
+const { logInfo } = require("../utils/logger");
 const licenseEngineConfig = require("../config/licenseEngine");
 
 const TOKEN_TTL_MS = licenseEngineConfig.downloads.updaterTokenTtlMs;
@@ -101,7 +102,7 @@ exports.check = asyncHandler(async (req, res) => {
   const normalizedLicenseKey = licenseKey.toUpperCase().trim();
   const normalizedPluginSlug = String(pluginSlug).trim().toLowerCase();
 
-  console.log("[WP Updater]", {
+  logInfo("wp_updater.check_received", {
     status: "check_received",
     pluginSlug: normalizedPluginSlug,
     domain: normalizedDomain,
@@ -126,7 +127,7 @@ exports.check = asyncHandler(async (req, res) => {
 
   const latest = await latestPublishedVersion(license.productId._id);
   if (!latest || !isNewerVersion(latest.versionNumber, currentVersion)) {
-    console.log("[WP Updater]", {
+    logInfo("wp_updater.no_update", {
       status: "no_update",
       pluginSlug: normalizedPluginSlug,
       domain: normalizedDomain,
@@ -142,7 +143,7 @@ exports.check = asyncHandler(async (req, res) => {
     normalizedDomain,
   });
 
-  console.log("[WP Updater]", {
+  logInfo("wp_updater.signed_url_issued", {
     status: "signed_url_issued",
     pluginSlug: normalizedPluginSlug,
     domain: normalizedDomain,
@@ -238,7 +239,7 @@ exports.download = asyncHandler(async (req, res) => {
   res.setHeader("Content-Length", stat.size);
   res.setHeader("Content-Disposition", `attachment; filename="${path.basename(filename)}"`);
 
-  console.log("[WP Updater]", {
+  logInfo("wp_updater.download_completed", {
     status: "download_completed",
     pluginSlug: license.productId.slug,
     domain: download.domain,

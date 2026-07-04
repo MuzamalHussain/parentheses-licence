@@ -1,10 +1,11 @@
 {
-  "generatedAt": "2026-07-02T12:30:00.799Z",
+  "generatedAt": "2026-07-03T06:56:10.547Z",
   "version": "1.0.0",
+  "releaseLabel": "1.0.0",
   "packages": {
     "root": "1.0.0",
     "backend": "1.0.0",
-    "frontend": "0.0.0"
+    "frontend": "1.0.0"
   },
   "qualityGates": [
     "backend lint",
@@ -15,5 +16,12 @@
     "production readiness check",
     "workflow verification",
     "artifact validation"
+  ],
+  "releaseArtifacts": [
+    "release-summary.json",
+    "release-notes.md",
+    "known-issues.md",
+    "upgrade-notes.md",
+    "production-checklist.md"
   ]
 }

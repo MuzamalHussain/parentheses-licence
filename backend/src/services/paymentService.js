@@ -6,6 +6,7 @@ const Plan = require("../models/Plan");
 const Coupon = require("../models/Coupon");
 const { generateUniqueLicenseKey } = require("../utils/licenseKey");
 const { writeAuditLog } = require("../utils/auditLog");
+const { logInfo, logError } = require("../utils/logger");
 const notificationService = require("./notificationService");
 
 function normalizeGatewayTransactionId(orderId, paymentDetails) {
@@ -37,7 +38,7 @@ async function notifyLicenseIssued({ order, license, paymentDetails }) {
       productName: product?.name || "your plugin",
     });
   } catch (err) {
-    console.error("[Payments] License email failed:", {
+    logError("payments.license_email_failed", {
       orderId: order._id?.toString(),
       gateway: paymentDetails.gateway,
       gatewayTransactionId: paymentDetails.gatewayTransactionId,
@@ -62,7 +63,7 @@ async function confirmOrderPaid(orderId, paymentDetails) {
   let result;
   let shouldSendLicenseEmail = false;
 
-  console.log("[Payments] Completion transaction start", {
+  logInfo("payments.completion_transaction_start", {
     orderId: orderId.toString(),
     gateway: paymentDetails.gateway,
     gatewayTransactionId,
@@ -112,7 +113,7 @@ async function confirmOrderPaid(orderId, paymentDetails) {
       }
 
       if (order.status === "paid" && payment && license) {
-        console.log("[Payments] Completion idempotent replay", {
+        logInfo("payments.completion_idempotent_replay", {
           orderId: order._id.toString(),
           gateway: paymentDetails.gateway,
           gatewayTransactionId,
@@ -198,13 +199,13 @@ async function confirmOrderPaid(orderId, paymentDetails) {
       result = { order, license, alreadyProcessed: !shouldSendLicenseEmail && !transitionedToPaid };
     });
 
-    console.log("[Payments] Completion transaction commit", {
+    logInfo("payments.completion_transaction_commit", {
       orderId: orderId.toString(),
       gateway: paymentDetails.gateway,
       gatewayTransactionId,
     });
   } catch (err) {
-    console.error("[Payments] Completion transaction abort", {
+    logError("payments.completion_transaction_abort", {
       orderId: orderId.toString(),
       gateway: paymentDetails.gateway,
       gatewayTransactionId,

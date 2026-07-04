@@ -1,4 +1,5 @@
 const { getRedisClient } = require("../config/redis");
+const { logError } = require("../utils/logger");
 
 // In-memory store fallback (per-process, not distributed — dev only)
 const memoryStore = new Map();
@@ -35,7 +36,7 @@ async function checkRateLimit(key, { maxRequests, windowMs }) {
       const allowed = count <= maxRequests;
       return { allowed, remaining: Math.max(0, maxRequests - count), resetAt };
     } catch (err) {
-      console.error("[RateLimit] Redis error, falling through to allow:", err.message);
+      logError("rate_limit.redis_error_fallthrough", { error: err.message });
       return { allowed: true, remaining: maxRequests, resetAt };
     }
   }

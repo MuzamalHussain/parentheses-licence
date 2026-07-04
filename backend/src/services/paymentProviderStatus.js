@@ -1,5 +1,6 @@
 const { getConfig } = require("../config/env");
 const { AppError } = require("../utils/errorHandler");
+const { logWarn } = require("../utils/logger");
 
 const PROVIDERS = {
   stripe: {
@@ -124,7 +125,7 @@ function assertProviderOperational(providerId, config = getConfig()) {
   if (!status) throw new AppError("Unsupported payment provider.", 422);
 
   if (!status.operational) {
-    console.warn("[Payments] Checkout provider blocked", {
+    logWarn("payments.checkout_provider_blocked", {
       provider: providerId,
       enabled: status.enabled,
       configured: status.configured,

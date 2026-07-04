@@ -6,6 +6,7 @@ const {
   markWebhookFailed,
 } = require("../utils/webhookGuard");
 const Order = require("../models/Order");
+const { logInfo, logError } = require("../utils/logger");
 
 async function handleStripeWebhook(req, res) {
   let event;
@@ -14,11 +15,11 @@ async function handleStripeWebhook(req, res) {
     const signature = req.headers["stripe-signature"];
     event = constructWebhookEvent(req.body, signature);
   } catch (err) {
-    console.error("[Stripe Webhook] Signature verification failed:", err.message);
+    logError("stripe_webhook.signature_verification_failed", { error: err.message });
     return res.status(400).json({ success: false, message: "Webhook signature verification failed.", requestId: req.id });
   }
 
-  console.log("[Stripe Webhook]", {
+  logInfo("stripe_webhook.received", {
     eventId: event.id,
     eventType: event.type,
     status: "received",
@@ -32,7 +33,7 @@ async function handleStripeWebhook(req, res) {
   });
 
   if (!shouldProcess) {
-    console.log("[Stripe Webhook]", {
+    logInfo("stripe_webhook.duplicate", {
       eventId: event.id,
       eventType: event.type,
       status: "duplicate",
@@ -42,7 +43,7 @@ async function handleStripeWebhook(req, res) {
   }
 
   try {
-    console.log("[Stripe Webhook]", {
+    logInfo("stripe_webhook.processing_started", {
       eventId: event.id,
       eventType: event.type,
       status: "processing_started",
@@ -86,14 +87,14 @@ async function handleStripeWebhook(req, res) {
     }
 
     await markWebhookProcessed("stripe", event.id);
-    console.log("[Stripe Webhook]", {
+    logInfo("stripe_webhook.processing_completed", {
       eventId: event.id,
       eventType: event.type,
       status: "processing_completed",
     });
     res.json({ received: true });
   } catch (err) {
-    console.error("[Stripe Webhook]", {
+    logError("stripe_webhook.processing_failed", {
       eventId: event.id,
       eventType: event.type,
       status: "processing_failed",

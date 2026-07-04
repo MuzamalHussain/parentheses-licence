@@ -7,6 +7,7 @@ const { AppError } = require("../utils/errorHandler");
 const notificationService = require("../services/notificationService");
 const { getConfig } = require("../config/env");
 const { writeAuditLog } = require("../utils/auditLog");
+const { logWarn } = require("../utils/logger");
 
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
@@ -59,7 +60,7 @@ function auditAuthEvent(req, action, user = null, metadata = {}) {
 async function registerFailedLogin(user, email, req = null) {
   if (!user) {
     await bcrypt.compare("invalid-password", DUMMY_PASSWORD_HASH);
-    console.warn("[Auth] Failed login", { email, reason: "invalid_credentials" });
+    logWarn("auth.login_failed", { email, reason: "invalid_credentials" });
     await auditAuthEvent(req, "auth.login_failed", null, { reason: "invalid_credentials", email });
     return;
   }
@@ -70,9 +71,9 @@ async function registerFailedLogin(user, email, req = null) {
 
   if (failedLoginAttempts >= config.auth.maxFailedLoginAttempts) {
     user.loginLockedUntil = new Date(Date.now() + config.auth.loginLockoutMinutes * 60 * 1000);
-    console.warn("[Auth] Login locked", { userId: user._id, failedLoginAttempts });
+    logWarn("auth.login_locked", { userId: user._id, failedLoginAttempts });
   } else {
-    console.warn("[Auth] Failed login", { userId: user._id, reason: "invalid_credentials", failedLoginAttempts });
+    logWarn("auth.login_failed", { userId: user._id, reason: "invalid_credentials", failedLoginAttempts });
   }
 
   await user.save({ validateBeforeSave: false });
@@ -221,7 +222,7 @@ exports.refresh = asyncHandler(async (req, res) => {
     revokeRefreshSession(user, decoded.jti);
     await user.save({ validateBeforeSave: false });
     clearRefreshCookie(res);
-    console.warn("[Auth] Refresh token replay rejected", { userId: user._id, sessionId: decoded.jti });
+    logWarn("auth.refresh_token_replay_rejected", { userId: user._id, sessionId: decoded.jti });
     throw new AppError("Refresh token is invalid or has expired.", 401);
   }
 
