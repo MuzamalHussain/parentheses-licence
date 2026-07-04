@@ -11,6 +11,7 @@ const navItems = [
   { to: "/dashboard/downloads", icon: Download, label: "Downloads" },
   { to: "/dashboard/orders", icon: ShoppingCart, label: "Orders & Billing" },
   { to: "/dashboard/support", icon: HeadphonesIcon, label: "Support" },
+  { to: "/dashboard/profile", icon: User, label: "Profile" },
 ];
 
 export default function PortalLayout() {

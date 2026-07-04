@@ -19,6 +19,7 @@ import LicensesPage from "./pages/portal/LicensesPage";
 import DownloadsPage from "./pages/portal/DownloadsPage";
 import OrdersPage from "./pages/portal/OrdersPage";
 import SupportPage from "./pages/portal/SupportPage";
+import ProfilePage from "./pages/portal/ProfilePage";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminProductsPage from "./pages/admin/AdminProductsPage";
@@ -60,6 +61,13 @@ export default function App() {
                 <Route path="/dashboard/downloads" element={<DownloadsPage />} />
                 <Route path="/dashboard/orders" element={<OrdersPage />} />
                 <Route path="/dashboard/support" element={<SupportPage />} />
+                <Route path="/dashboard/profile" element={<ProfilePage />} />
+              </Route>
+            </Route>
+
+            <Route element={<ProtectedRoute roles={["admin"]} />}>
+              <Route element={<AdminLayout />}>
+                <Route path="/admin/users" element={<AdminUsers />} />
               </Route>
             </Route>
 
@@ -68,7 +76,6 @@ export default function App() {
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/products" element={<AdminProductsPage />} />
                 <Route path="/admin/licenses" element={<AdminLicenses />} />
-                <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/orders" element={<AdminOrders />} />
                 <Route path="/admin/coupons" element={<AdminCoupons />} />
                 <Route path="/admin/domains" element={<AdminDomains />} />

@@ -56,6 +56,10 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const updateUser = useCallback((nextUser) => {
+    setUser((current) => ({ ...current, ...nextUser }));
+  }, []);
+
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch {
       // Logout remains local even if the server session is already gone.
@@ -68,7 +72,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = Boolean(user);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated, login, register, logout, isAdmin, isSupport }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated, login, register, logout, updateUser, isAdmin, isSupport }}>
       {children}
     </AuthContext.Provider>
   );

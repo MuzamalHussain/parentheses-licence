@@ -108,6 +108,7 @@ app.use("/api",                       require("./routes/apiVersions"));
 app.use("/api/v1/admin",               makeRateLimiter("admin"));
 app.use("/api/v1/downloads",           makeRateLimiter("downloads"));
 app.use("/api/v1/auth",                require("./routes/auth"));
+app.use("/api/v1/account",             require("./routes/account"));
 app.use("/api/v1/products",            require("./routes/products"));
 app.use("/api/v1/admin/users",         require("./routes/adminUsers"));
 app.use("/api/v1/admin/licenses",      require("./routes/adminLicenses"));
