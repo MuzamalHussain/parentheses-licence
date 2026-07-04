@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import api from "../lib/api";
+import api, { AUTH_SESSION_EXPIRED_EVENT, clearAuthSession } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -7,20 +7,47 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const clearLocalAuth = useCallback(() => {
+    clearAuthSession();
+    setUser(null);
+    setLoading(false);
+  }, []);
+
   // On app load, try to fetch current user using stored token
   useEffect(() => {
+    const handleSessionExpired = () => clearLocalAuth();
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+
+    let active = true;
     const token = localStorage.getItem("accessToken");
-    if (!token) { setLoading(false); return; }
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    }
+
     api.get("/auth/me")
-      .then(({ data }) => setUser(data.data))
-      .catch(() => localStorage.removeItem("accessToken"))
-      .finally(() => setLoading(false));
-  }, []);
+      .then(({ data }) => {
+        if (active) setUser(data.data);
+      })
+      .catch(() => {
+        if (active) clearLocalAuth();
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    };
+  }, [clearLocalAuth]);
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     localStorage.setItem("accessToken", data.data.accessToken);
     setUser(data.data.user);
+    setLoading(false);
     return data.data.user;
   }, []);
 
@@ -33,15 +60,15 @@ export function AuthProvider({ children }) {
     try { await api.post("/auth/logout"); } catch {
       // Logout remains local even if the server session is already gone.
     }
-    localStorage.removeItem("accessToken");
-    setUser(null);
-  }, []);
+    clearLocalAuth();
+  }, [clearLocalAuth]);
 
   const isAdmin = user?.role === "admin";
   const isSupport = user?.role === "support";
+  const isAuthenticated = Boolean(user);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isAdmin, isSupport }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated, login, register, logout, isAdmin, isSupport }}>
       {children}
     </AuthContext.Provider>
   );

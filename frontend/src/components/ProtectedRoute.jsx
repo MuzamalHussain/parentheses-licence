@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 // Shows a spinner while auth state is loading
@@ -13,8 +13,9 @@ function AuthLoader() {
 // Redirect to login if not authenticated; optionally enforce roles
 export function ProtectedRoute({ roles }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <AuthLoader />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }
