@@ -11,7 +11,7 @@ exports.getMyAvailableVersions = asyncHandler(async (req, res) => {
 
   const versions = await PluginVersion.find({ productId: req.params.productId, isPublished: true })
     .sort({ createdAt: -1 })
-    .select("-zipFilePath -checksum")
+    .select("-zipFilePath -checksum -checksumMd5")
     .lean(); // never leak internal storage path
 
   // Also include unpublished-but-previously-published history? No — customers
@@ -24,7 +24,7 @@ exports.getMyAvailableVersions = asyncHandler(async (req, res) => {
     releasedAt: { $ne: null },
   })
     .sort({ createdAt: -1 })
-    .select("-zipFilePath -checksum")
+    .select("-zipFilePath -checksum -checksumMd5")
     .limit(20)
     .lean();
 

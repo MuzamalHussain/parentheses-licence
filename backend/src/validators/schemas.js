@@ -118,6 +118,35 @@ const createProductSchema = z.object({
 
 const updateProductSchema = createProductSchema.partial();
 
+const versionStatusSchema = z.enum(["draft", "published", "hidden", "archived", "deprecated"]);
+const versionReleaseChannelSchema = z.enum(["stable", "release_candidate", "beta", "alpha", "internal", "deprecated"]);
+const updateVersionSchema = z.object({
+  versionName: z.string().trim().max(150).optional(),
+  status: versionStatusSchema.optional(),
+  releaseChannel: versionReleaseChannelSchema.optional(),
+  description: z.string().trim().max(5000).optional(),
+  changelog: z.string().trim().max(10000).optional(),
+  releaseNotes: z.string().trim().max(20000).optional(),
+  minWpVersion: z.string().trim().max(40).optional(),
+  minPhpVersion: z.string().trim().max(40).optional(),
+  testedUpTo: z.string().trim().max(40).optional(),
+  pluginSlug: slugSchema.max(150).optional(),
+  releaseDate: z.coerce.date().optional(),
+  newFeatures: z.string().trim().max(5000).optional(),
+  improvements: z.string().trim().max(5000).optional(),
+  bugFixes: z.string().trim().max(5000).optional(),
+  securityFixes: z.string().trim().max(5000).optional(),
+  breakingChanges: z.string().trim().max(5000).optional(),
+  developerNotes: z.string().trim().max(5000).optional(),
+}).strict();
+
+const versionQuerySchema = z.object({
+  status: versionStatusSchema.optional(),
+  releaseChannel: versionReleaseChannelSchema.optional(),
+  latest: z.enum(["true", "false"]).optional(),
+  search: z.string().trim().max(150).optional(),
+}).passthrough();
+
 // ── Plans ─────────────────────────────────────────────────────────────────────
 const createPlanSchema = z.object({
   name: z.string().min(1).max(100),
@@ -212,6 +241,8 @@ module.exports = {
   adminUserInternalNoteSchema,
   createProductSchema,
   updateProductSchema,
+  updateVersionSchema,
+  versionQuerySchema,
   createPlanSchema,
   updatePlanSchema,
 };

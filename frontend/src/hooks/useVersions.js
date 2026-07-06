@@ -3,10 +3,10 @@ import api from "../lib/api";
 import toast from "react-hot-toast";
 
 // ── Admin: Plugin Versions ────────────────────────────────────────────────────
-export const useAdminVersions = (productId) =>
+export const useAdminVersions = (productId, filters = {}) =>
   useQuery({
-    queryKey: ["admin-versions", productId],
-    queryFn: () => api.get(`/admin/products/${productId}/versions`).then((r) => r.data.data),
+    queryKey: ["admin-versions", productId, filters],
+    queryFn: () => api.get(`/admin/products/${productId}/versions`, { params: filters }).then((r) => r.data.data),
     enabled: !!productId,
   });
 
@@ -22,6 +22,19 @@ export const useUploadVersion = (productId) => {
       qc.invalidateQueries({ queryKey: ["admin-versions", productId] });
     },
     onError: (err) => toast.error(err.response?.data?.message || "Upload failed."),
+  });
+};
+
+export const useUpdateVersion = (productId) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }) =>
+      api.patch(`/admin/products/${productId}/versions/${id}`, values).then((r) => r.data),
+    onSuccess: () => {
+      toast.success("Version updated.");
+      qc.invalidateQueries({ queryKey: ["admin-versions", productId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Update failed."),
   });
 };
 
