@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ShoppingCart, DollarSign, Loader2, Undo2 } from "lucide-react";
 import { Input, Button, Alert } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -15,6 +16,10 @@ function StatCard({ label, value, icon: Icon, color }) {
       <p className="text-sm text-gray-500 mt-0.5">{label}</p>
     </div>
   );
+}
+
+function getId(value) {
+  return value?.id || value?._id;
 }
 
 function RefundModal({ order, onClose }) {
@@ -124,7 +129,13 @@ export default function AdminOrders() {
                   {orders.map((o) => (
                     <tr key={o._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <p className="text-gray-700">{o.userId?.name}</p>
+                        {getId(o.userId) ? (
+                          <Link to={`/admin/users/${getId(o.userId)}`} className="text-gray-700 hover:text-brand-600 hover:underline">
+                            {o.userId?.name}
+                          </Link>
+                        ) : (
+                          <p className="text-gray-700">{o.userId?.name}</p>
+                        )}
                         <p className="text-xs text-gray-400">{o.userId?.email}</p>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell text-gray-600">

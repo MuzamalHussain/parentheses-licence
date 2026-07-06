@@ -11,6 +11,7 @@ const {
   createPlanSchema,
   updatePlanSchema,
   idParamSchema,
+  paginationQuerySchema,
   productIdParamSchema,
   productPlanParamSchema,
 } = require("../validators/schemas");
@@ -28,7 +29,7 @@ const optionalAuth = (req, res, next) => {
 };
 
 // ── Public product reads ──────────────────────────────────────────────────────
-router.get("/", optionalAuth, productController.getProducts);
+router.get("/", optionalAuth, validateRequest({ query: paginationQuerySchema }), productController.getProducts);
 router.get("/:id", optionalAuth, validateRequest({ params: idParamSchema }), productController.getProduct);
 
 // ── Public plan reads ─────────────────────────────────────────────────────────

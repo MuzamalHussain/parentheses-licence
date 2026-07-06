@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Ticket, Loader2, Send, X, Clock, CheckCircle2, MessageCircle } from "lucide-react";
 import { Input, Button } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -18,6 +19,10 @@ function StatCard({ label, value, icon: Icon, color }) {
       <p className="text-xs text-gray-500">{label}</p>
     </div>
   );
+}
+
+function getId(value) {
+  return value?.id || value?._id;
 }
 
 function TicketDrawer({ ticketId, onClose }) {
@@ -44,8 +49,15 @@ function TicketDrawer({ ticketId, onClose }) {
                 <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900 truncate">{ticket.subject}</h2>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {ticket.userId?.name} · {ticket.userId?.email}
-                    {ticket.licenseId && <> · <span className="font-mono">{ticket.licenseId.licenseKey}</span></>}
+                    {getId(ticket.userId) ? (
+                      <Link to={`/admin/users/${getId(ticket.userId)}`} className="text-brand-600 hover:underline">
+                        {ticket.userId?.name}
+                      </Link>
+                    ) : (
+                      ticket.userId?.name
+                    )}{" "}
+                    - {ticket.userId?.email}
+                    {ticket.licenseId && <> - <span className="font-mono">{ticket.licenseId.licenseKey}</span></>}
                   </p>
                 </div>
                 <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg flex-shrink-0"><X className="w-4 h-4" /></button>
@@ -156,16 +168,35 @@ export default function AdminSupport() {
           <div className="card overflow-hidden">
             <div className="divide-y divide-gray-50">
               {tickets.map((t) => (
-                <button key={t._id} onClick={() => setActiveTicket(t._id)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 text-left transition-colors">
+                <div
+                  key={t._id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setActiveTicket(t._id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") setActiveTicket(t._id);
+                  }}
+                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 text-left transition-colors cursor-pointer"
+                >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate">{t.subject}</p>
                     <p className="text-xs text-gray-400">
-                      {t.userId?.name} · {new Date(t.lastMessageAt).toLocaleString()}
+                      {getId(t.userId) ? (
+                        <Link
+                          to={`/admin/users/${getId(t.userId)}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="text-brand-600 hover:underline"
+                        >
+                          {t.userId?.name}
+                        </Link>
+                      ) : (
+                        t.userId?.name
+                      )}{" "}
+                      - {new Date(t.lastMessageAt).toLocaleString()}
                     </p>
                   </div>
                   <StatusBadge status={t.status} className="flex-shrink-0 ml-3" />
-                </button>
+                </div>
               ))}
             </div>
             <div className="px-5 pb-4">

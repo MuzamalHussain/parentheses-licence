@@ -2,9 +2,19 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertCircle, Building2, CheckCircle2, Loader2, Lock, Mail, ShieldCheck, User } from "lucide-react";
+import { AlertCircle, Building2, CheckCircle2, Loader2, Lock, Mail, Monitor, ShieldCheck, ShieldOff, User } from "lucide-react";
 import { Alert, Button, FormField, Input } from "../../components/ui";
-import { useChangePassword, useProfile, useUpdateProfile } from "../../hooks/useAccount";
+import {
+  useAccountSecurityEvents,
+  useAccountSessions,
+  useChangePassword,
+  useLogoutAllSessions,
+  useLogoutCurrentSession,
+  useLogoutOtherSessions,
+  useProfile,
+  useRevokeAccountSession,
+  useUpdateProfile,
+} from "../../hooks/useAccount";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name is too long"),
@@ -26,6 +36,12 @@ const passwordSchema = z.object({
 
 function statusText(value) {
   return value ? "Verified" : "Not verified";
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
 }
 
 function DetailItem({ icon: Icon, label, value, tone = "gray" }) {
@@ -211,21 +227,117 @@ function PasswordForm() {
 }
 
 function SecurityInfo({ profile }) {
+  const { data: sessions = [], isLoading: sessionsLoading } = useAccountSessions();
+  const { data: security, isLoading: eventsLoading } = useAccountSecurityEvents();
+  const revokeSession = useRevokeAccountSession();
+  const logoutCurrent = useLogoutCurrentSession();
+  const logoutOthers = useLogoutOtherSessions();
+  const logoutAll = useLogoutAllSessions();
+
   return (
-    <div className="card p-5">
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-brand-50 text-brand-600">
-          <Lock className="w-5 h-5" />
-        </div>
-        <div>
-          <h2 className="font-semibold text-gray-900">Security Info</h2>
-          <div className="mt-3 space-y-2 text-sm text-gray-500">
-            <p>Email verification: <span className="font-medium text-gray-700">{statusText(profile?.emailVerified)}</span></p>
-            <p>Account status: <span className="font-medium text-gray-700">{profile?.isActive ? "Active" : "Inactive"}</span></p>
-            <p>Last login: <span className="font-medium text-gray-700">{profile?.lastLoginAt ? new Date(profile.lastLoginAt).toLocaleString() : "Not available"}</span></p>
-            <p>Active sessions: <span className="font-medium text-gray-700">Managed securely by refresh sessions.</span></p>
+    <div className="space-y-6">
+      <div className="card p-5">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-brand-50 text-brand-600">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Security Info</h2>
+            <div className="mt-3 space-y-2 text-sm text-gray-500">
+              <p>Email verification: <span className="font-medium text-gray-700">{statusText(profile?.emailVerified)}</span></p>
+              <p>Account status: <span className="font-medium text-gray-700">{profile?.isActive ? "Active" : "Inactive"}</span></p>
+              <p>Last login: <span className="font-medium text-gray-700">{profile?.lastLoginAt ? new Date(profile.lastLoginAt).toLocaleString() : "Not available"}</span></p>
+              <p>Active sessions: <span className="font-medium text-gray-700">{sessions.length}</span></p>
+            </div>
           </div>
         </div>
+      </div>
+
+      <div className="card p-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="font-semibold text-gray-900">Active Sessions</h2>
+            <p className="text-sm text-gray-500 mt-0.5">Review devices signed in to your account.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 justify-end">
+            <Button variant="secondary" loading={logoutOthers.isPending} onClick={() => logoutOthers.mutate()}>
+              Other devices
+            </Button>
+            <Button variant="secondary" loading={logoutAll.isPending} onClick={() => logoutAll.mutate()}>
+              All devices
+            </Button>
+          </div>
+        </div>
+
+        {sessionsLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 text-brand-500 animate-spin" /></div>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-gray-400">No active sessions found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-left text-xs text-gray-400 uppercase tracking-wide">
+                  <th className="px-3 py-2 font-medium">Device</th>
+                  <th className="px-3 py-2 font-medium hidden md:table-cell">IP</th>
+                  <th className="px-3 py-2 font-medium hidden sm:table-cell">Last Activity</th>
+                  <th className="px-3 py-2 font-medium text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {sessions.map((session) => (
+                  <tr key={session.sessionId}>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <Monitor className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <p className="font-medium text-gray-800">
+                            {session.browser} on {session.operatingSystem}
+                            {session.currentSession && <span className="ml-2 text-xs text-green-600">Current</span>}
+                          </p>
+                          <p className="text-xs text-gray-400">{session.device} - signed in {formatDate(session.loginAt)}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 hidden md:table-cell font-mono text-xs text-gray-500">{session.ipAddress || "-"}</td>
+                    <td className="px-3 py-3 hidden sm:table-cell text-xs text-gray-500">{formatDate(session.lastActivity)}</td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        title="Terminate session"
+                        disabled={revokeSession.isPending || logoutCurrent.isPending}
+                        onClick={() => session.currentSession ? logoutCurrent.mutate() : revokeSession.mutate(session.sessionId)}
+                        className="inline-flex p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <ShieldOff className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card p-5">
+        <h2 className="font-semibold text-gray-900 mb-4">Security Events</h2>
+        {eventsLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 text-brand-500 animate-spin" /></div>
+        ) : !security?.securityEvents?.length ? (
+          <p className="text-sm text-gray-400">No security events found.</p>
+        ) : (
+          <div className="space-y-3">
+            {security.securityEvents.slice(0, 12).map((event) => (
+              <div key={event._id} className="flex gap-3">
+                <div className="w-2 h-2 rounded-full bg-brand-500 mt-2 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{event.action}</p>
+                  <p className="text-xs text-gray-400">{formatDate(event.createdAt)} - {event.ipAddress || event.metadata?.ipAddress || "no ip"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

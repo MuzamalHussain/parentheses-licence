@@ -18,6 +18,7 @@ const requireAuth = asyncHandler(async (req, res, next) => {
   const user = await User.findById(decoded.id).select("-passwordHash");
   if (!user) throw new AppError("User no longer exists.", 401);
   if (!user.isActive) throw new AppError("Your account has been deactivated.", 403);
+  if (user.isSuspended) throw new AppError("Your account has been suspended.", 403);
 
   req.user = user;
   next();

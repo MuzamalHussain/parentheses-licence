@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { AlertCircle, CheckCircle2, Eye, Loader2, Search, ShieldCheck, UserCheck, UserX, X } from "lucide-react";
-import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import { Alert, Button, Input } from "../../components/ui";
 import Pagination from "../../components/ui/Pagination";
@@ -116,13 +116,13 @@ function UserRow({ account, currentUserId, onRoleChange, onToggleActive }) {
       </td>
       <td className="px-4 py-3 text-right">
         <div className="inline-flex items-center gap-1">
-          <button
-            title="Customer detail arrives in Phase 9F"
-            onClick={() => toast("Customer detail arrives in Phase 9F.")}
+          <Link
+            to={`/admin/users/${id}`}
+            title="Open customer detail"
             className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600"
           >
             <Eye className="w-4 h-4" />
-          </button>
+          </Link>
           <button
             title={isSelf ? "You cannot deactivate yourself." : account.isActive ? "Deactivate user" : "Activate user"}
             disabled={isSelf}

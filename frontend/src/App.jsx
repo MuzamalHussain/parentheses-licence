@@ -25,6 +25,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminProductsPage from "./pages/admin/AdminProductsPage";
 import AdminLicenses from "./pages/admin/AdminLicenses";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminUserDetailPage from "./pages/admin/AdminUserDetailPage";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminDomains from "./pages/admin/AdminDomains";
@@ -68,6 +69,7 @@ export default function App() {
             <Route element={<ProtectedRoute roles={["admin"]} />}>
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<AdminUsers />} />
+                <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
               </Route>
             </Route>
 

@@ -50,13 +50,71 @@ const changePasswordSchema = z.object({
   message: "Passwords do not match.",
 });
 
-// ── Products ─────────────────────────────────────────────────────────────────
-const createProductSchema = z.object({
-  name: z.string().min(1).max(150),
-  slug: z.string().max(150).optional(),
-  description: z.string().max(5000).optional(),
-  status: z.enum(["active", "archived"]).optional(),
+const adminUserProfileUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  companyName: z.string().trim().max(150).optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, {
+  message: "At least one profile field is required.",
 });
+
+const adminUserStatusSchema = z.object({
+  action: z.enum(["activate", "deactivate", "suspend", "unsuspend"]),
+}).strict();
+
+const adminUserEmailVerificationSchema = z.object({
+  emailVerified: z.boolean(),
+}).strict();
+
+const adminUserInternalNoteSchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+}).strict();
+
+// ── Products ─────────────────────────────────────────────────────────────────
+const productStatusSchema = z.enum(["draft", "private", "published", "active", "archived", "deprecated", "hidden"]);
+const releaseChannelSchema = z.enum(["stable", "beta", "alpha"]);
+const slugSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Must be lowercase words separated by dashes");
+const pluginFolderSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9._-]*$/, "Can only contain letters, numbers, dots, underscores, and dashes");
+const mainPluginFileSchema = z.string().trim().regex(/^[A-Za-z0-9._-]+\.php$/, "Must be a PHP file name");
+const productArraySchema = z.array(z.string().trim().max(120)).max(50);
+const createProductSchema = z.object({
+  name: z.string().trim().min(1).max(150),
+  slug: slugSchema.max(150).optional(),
+  internalProductCode: z.string().trim().min(2).max(80).regex(/^[A-Za-z0-9._-]+$/, "Can only contain letters, numbers, dots, underscores, and dashes").optional(),
+  description: z.string().trim().max(5000).optional(),
+  shortDescription: z.string().trim().max(500).optional(),
+  status: productStatusSchema.optional(),
+  price: z.coerce.number().min(0).optional(),
+  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  licenseType: z.enum(["single_site", "multi_site", "unlimited", "subscription", "lifetime"]).optional(),
+  lifetimeSupport: z.coerce.boolean().optional(),
+  lifetimeUpdates: z.coerce.boolean().optional(),
+  renewalSupported: z.coerce.boolean().optional(),
+  upgradeSupported: z.coerce.boolean().optional(),
+  pluginSlug: slugSchema.max(150).optional(),
+  pluginFolder: pluginFolderSchema.max(150).optional(),
+  mainPluginFile: mainPluginFileSchema.max(150).optional(),
+  textDomain: z.string().trim().toLowerCase().max(150).optional(),
+  minPhpVersion: z.string().trim().max(40).optional(),
+  minWpVersion: z.string().trim().max(40).optional(),
+  testedUpTo: z.string().trim().max(40).optional(),
+  productLogo: z.string().trim().max(1000).optional(),
+  productBanner: z.string().trim().max(1000).optional(),
+  featuredImage: z.string().trim().max(1000).optional(),
+  supportedPlatforms: productArraySchema.optional(),
+  supportedPhpVersions: productArraySchema.optional(),
+  supportedWpVersions: productArraySchema.optional(),
+  dependencies: productArraySchema.optional(),
+  defaultReleaseChannel: releaseChannelSchema.optional(),
+  stableBranch: z.string().trim().max(120).optional(),
+  betaEnabled: z.coerce.boolean().optional(),
+  alphaEnabled: z.coerce.boolean().optional(),
+  downloadEnabled: z.coerce.boolean().optional(),
+  publicDownloadDisabled: z.coerce.boolean().optional(),
+  licenseRequired: z.coerce.boolean().optional(),
+  productUrl: z.string().trim().url().max(1000).or(z.literal("")).optional(),
+  metaTitle: z.string().trim().max(150).optional(),
+  metaDescription: z.string().trim().max(320).optional(),
+}).strict();
 
 const updateProductSchema = createProductSchema.partial();
 
@@ -106,10 +164,25 @@ const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
   status: z.string().max(50).optional(),
   search: z.string().max(150).optional(),
+  releaseChannel: z.enum(["stable", "beta", "alpha"]).optional(),
+  published: z.enum(["true", "false"]).optional(),
+  archived: z.enum(["true", "false"]).optional(),
   productId: objectIdSchema.optional(),
   userId: objectIdSchema.optional(),
 }).passthrough();
+const customerDetailQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  status: z.string().max(50).optional(),
+  search: z.string().max(150).optional(),
+  productId: objectIdSchema.optional(),
+  purpose: z.enum(["customer_download", "wordpress_update"]).optional(),
+  gateway: z.enum(["stripe", "local"]).optional(),
+  action: z.string().max(150).optional(),
+  targetType: z.string().max(100).optional(),
+}).passthrough();
 const idParamSchema = z.object({ id: objectIdSchema }).passthrough();
+const sessionIdParamSchema = z.object({ sessionId: z.string().min(8).max(128) }).passthrough();
 const licenseIdParamSchema = z.object({ licenseId: objectIdSchema }).passthrough();
 const productIdParamSchema = z.object({ productId: objectIdSchema }).passthrough();
 const productPlanParamSchema = z.object({ productId: objectIdSchema, id: objectIdSchema }).passthrough();
@@ -120,7 +193,9 @@ module.exports = {
   validateRequest,
   objectIdSchema,
   paginationQuerySchema,
+  customerDetailQuerySchema,
   idParamSchema,
+  sessionIdParamSchema,
   licenseIdParamSchema,
   productIdParamSchema,
   productPlanParamSchema,
@@ -131,6 +206,10 @@ module.exports = {
   resetPasswordSchema,
   profileUpdateSchema,
   changePasswordSchema,
+  adminUserProfileUpdateSchema,
+  adminUserStatusSchema,
+  adminUserEmailVerificationSchema,
+  adminUserInternalNoteSchema,
   createProductSchema,
   updateProductSchema,
   createPlanSchema,

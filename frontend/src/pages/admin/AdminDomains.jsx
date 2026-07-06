@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Globe, Search, Loader2, X, Trash2, Clock, Package, ExternalLink } from "lucide-react";
 import { Input, Button, Alert } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -15,6 +16,10 @@ function StatCard({ label, value, icon: Icon, color }) {
       <p className="text-sm text-gray-500 mt-0.5">{label}</p>
     </div>
   );
+}
+
+function getId(value) {
+  return value?.id || value?._id;
 }
 
 function HistoryDrawer({ licenseId, licenseKey, onClose }) {
@@ -181,7 +186,13 @@ export default function AdminDomains() {
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <p className="text-gray-700">{d.customer?.name || "—"}</p>
+                        {getId(d.customer) ? (
+                          <Link to={`/admin/users/${getId(d.customer)}`} className="text-gray-700 hover:text-brand-600 hover:underline">
+                            {d.customer?.name || "-"}
+                          </Link>
+                        ) : (
+                          <p className="text-gray-700">{d.customer?.name || "-"}</p>
+                        )}
                         <p className="text-xs text-gray-400">{d.customer?.email}</p>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell text-gray-600">{d.product?.name || "—"}</td>

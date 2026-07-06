@@ -5,8 +5,13 @@ const ROLES = Object.freeze({
 });
 
 const PRODUCT_STATUS = Object.freeze({
+  DRAFT: "draft",
+  PRIVATE: "private",
+  PUBLISHED: "published",
   ACTIVE: "active",
   ARCHIVED: "archived",
+  DEPRECATED: "deprecated",
+  HIDDEN: "hidden",
 });
 
 const RENEWAL_TYPE = Object.freeze({

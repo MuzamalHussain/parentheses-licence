@@ -34,6 +34,28 @@ const userSchema = new mongoose.Schema(
       maxlength: 150,
       default: "",
     },
+    isSuspended: {
+      type: Boolean,
+      default: false,
+    },
+    suspendedAt: {
+      type: Date,
+    },
+    suspendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    internalNotes: {
+      type: [
+        {
+          body: { type: String, required: true, trim: true, maxlength: 2000 },
+          createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+      select: false,
+    },
 
     emailVerified: {
       type: Boolean,
@@ -64,7 +86,13 @@ const userSchema = new mongoose.Schema(
           tokenHash: { type: String, required: true },
           expiresAt: { type: Date, required: true },
           createdAt: { type: Date, default: Date.now },
+          loginAt: { type: Date, default: Date.now },
           lastUsedAt: { type: Date, default: Date.now },
+          userAgent: { type: String, default: "" },
+          browser: { type: String, default: "" },
+          operatingSystem: { type: String, default: "" },
+          device: { type: String, default: "" },
+          ipAddress: { type: String, default: "" },
         },
       ],
       default: [],
@@ -102,6 +130,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ role: 1, createdAt: -1 });
 userSchema.index({ isActive: 1, createdAt: -1 });
+userSchema.index({ isSuspended: 1, createdAt: -1 });
 
 userSchema.methods.comparePassword = async function (plainPassword) {
   return bcrypt.compare(plainPassword, this.passwordHash);
@@ -117,8 +146,9 @@ userSchema.methods.toSafeJSON = function () {
     emailVerified: this.emailVerified,
     twoFactorEnabled: this.twoFactorEnabled,
     isActive: this.isActive,
+    isSuspended: this.isSuspended,
     createdAt: this.createdAt,
   };
-};
+  };
 
 module.exports = mongoose.model("User", userSchema);

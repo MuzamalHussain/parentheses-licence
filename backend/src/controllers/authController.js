@@ -8,6 +8,7 @@ const notificationService = require("../services/notificationService");
 const { getConfig } = require("../config/env");
 const { writeAuditLog } = require("../utils/auditLog");
 const { logWarn } = require("../utils/logger");
+const { getSessionClient } = require("../utils/sessionSecurity");
 
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
@@ -67,6 +68,7 @@ async function registerFailedLogin(user, email, req = null) {
 
   const config = getConfig();
   const failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+  const wasLocked = isLoginLocked(user);
   user.failedLoginAttempts = failedLoginAttempts;
 
   if (failedLoginAttempts >= config.auth.maxFailedLoginAttempts) {
@@ -81,7 +83,15 @@ async function registerFailedLogin(user, email, req = null) {
     reason: "invalid_credentials",
     failedLoginAttempts,
     locked: Boolean(user.loginLockedUntil),
+    ipAddress: req?.ip || "",
   });
+  if (!wasLocked && user.loginLockedUntil) {
+    await auditAuthEvent(req, "auth.account_locked", user, {
+      failedLoginAttempts,
+      loginLockedUntil: user.loginLockedUntil,
+      ipAddress: req?.ip || "",
+    });
+  }
 }
 
 function pruneRefreshSessions(user) {
@@ -93,17 +103,20 @@ function pruneRefreshSessions(user) {
     .slice(0, maxSessions);
 }
 
-function issueRefreshSession(user, payload, existingSessionId = null) {
+function issueRefreshSession(user, payload, existingSessionId = null, req = null) {
   const sessionId = existingSessionId || crypto.randomBytes(24).toString("hex");
   const refreshToken = signRefreshToken({ ...payload, nonce: crypto.randomBytes(16).toString("hex") }, { jwtid: sessionId });
   const decoded = verifyRefreshToken(refreshToken);
   const expiresAt = new Date(decoded.exp * 1000);
+  const client = req ? getSessionClient(req) : {};
   const session = {
     sessionId,
     tokenHash: hashToken(refreshToken),
     expiresAt,
     createdAt: existingSessionId ? undefined : new Date(),
+    loginAt: existingSessionId ? undefined : new Date(),
     lastUsedAt: new Date(),
+    ...client,
   };
 
   pruneRefreshSessions(user);
@@ -113,6 +126,11 @@ function issueRefreshSession(user, payload, existingSessionId = null) {
     sessions[existingIndex].tokenHash = session.tokenHash;
     sessions[existingIndex].expiresAt = session.expiresAt;
     sessions[existingIndex].lastUsedAt = session.lastUsedAt;
+    if (client.userAgent) sessions[existingIndex].userAgent = client.userAgent;
+    if (client.browser) sessions[existingIndex].browser = client.browser;
+    if (client.operatingSystem) sessions[existingIndex].operatingSystem = client.operatingSystem;
+    if (client.device) sessions[existingIndex].device = client.device;
+    if (client.ipAddress) sessions[existingIndex].ipAddress = client.ipAddress;
   } else {
     sessions.unshift(session);
   }
@@ -169,6 +187,10 @@ exports.login = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email }).select("+passwordHash +failedLoginAttempts +loginLockedUntil +refreshSessions");
   if (user && isLoginLocked(user)) {
+    await auditAuthEvent(req, "auth.login_blocked_locked", user, {
+      loginLockedUntil: user.loginLockedUntil,
+      ipAddress: req.ip || "",
+    });
     throw new AppError("Too many failed login attempts. Please try again later.", 423);
   }
 
@@ -177,16 +199,23 @@ exports.login = asyncHandler(async (req, res) => {
     throw new AppError("Invalid email or password.", 401);
   }
   if (!user.isActive) throw new AppError("Your account has been deactivated. Contact support.", 403);
+  if (user.isSuspended) throw new AppError("Your account has been suspended. Contact support.", 403);
 
+  const wasPreviouslyLocked = Boolean(user.loginLockedUntil);
   user.lastLoginAt = new Date();
   user.failedLoginAttempts = 0;
   user.loginLockedUntil = undefined;
 
   const payload = { id: user._id, role: user.role };
   const accessToken = signAccessToken(payload);
-  const refreshToken = issueRefreshSession(user, payload);
+  const refreshToken = issueRefreshSession(user, payload, null, req);
   await user.save({ validateBeforeSave: false });
-  await auditAuthEvent(req, "auth.login", user, { sessionCount: user.refreshSessions?.length || 0 });
+  if (wasPreviouslyLocked) await auditAuthEvent(req, "auth.account_unlocked", user, { reason: "successful_login" });
+  await auditAuthEvent(req, "auth.login", user, {
+    sessionCount: user.refreshSessions?.length || 0,
+    sessionId: user.refreshSessions?.[0]?.sessionId || "",
+    ...getSessionClient(req),
+  });
 
   res
     .cookie("refreshToken", refreshToken, refreshCookieOptions())
@@ -208,13 +237,18 @@ exports.refresh = asyncHandler(async (req, res) => {
   if (!decoded.jti) throw new AppError("Invalid refresh token.", 401);
 
   const user = await User.findById(decoded.id).select("+refreshSessions");
-  if (!user || !user.isActive) throw new AppError("User not found or inactive.", 401);
+  if (!user || !user.isActive || user.isSuspended) throw new AppError("User not found or inactive.", 401);
 
   pruneRefreshSessions(user);
   const session = (user.refreshSessions || []).find((item) => item.sessionId === decoded.jti);
   if (!session || new Date(session.expiresAt) <= new Date()) {
     clearRefreshCookie(res);
     if (user) await user.save({ validateBeforeSave: false });
+    await auditAuthEvent(req, "auth.refresh_rejected", user, {
+      sessionId: decoded.jti,
+      reason: session ? "expired_session" : "missing_session",
+      ...getSessionClient(req),
+    });
     throw new AppError("Refresh token is invalid or has expired.", 401);
   }
 
@@ -223,13 +257,15 @@ exports.refresh = asyncHandler(async (req, res) => {
     await user.save({ validateBeforeSave: false });
     clearRefreshCookie(res);
     logWarn("auth.refresh_token_replay_rejected", { userId: user._id, sessionId: decoded.jti });
+    await auditAuthEvent(req, "auth.refresh_reuse_rejected", user, { sessionId: decoded.jti, ...getSessionClient(req) });
     throw new AppError("Refresh token is invalid or has expired.", 401);
   }
 
   const payload = { id: user._id, role: user.role };
   const newAccessToken = signAccessToken(payload);
-  const newRefreshToken = issueRefreshSession(user, payload, decoded.jti);
+  const newRefreshToken = issueRefreshSession(user, payload, decoded.jti, req);
   await user.save({ validateBeforeSave: false });
+  await auditAuthEvent(req, "auth.refresh_rotated", user, { sessionId: decoded.jti, ...getSessionClient(req) });
 
   res
     .cookie("refreshToken", newRefreshToken, refreshCookieOptions())

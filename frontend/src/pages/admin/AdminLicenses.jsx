@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Key, Plus, Search, Ban, CheckCircle, Trash2,
   RotateCcw, Loader2, ChevronDown, X, Copy, Check
@@ -197,6 +198,7 @@ function LicenseRow({ license }) {
 
   const exp = license.expiresAt ? new Date(license.expiresAt) : null;
   const isExpired = exp && exp < new Date();
+  const customerId = license.userId?.id || license.userId?._id;
 
   return (
     <>
@@ -220,7 +222,14 @@ function LicenseRow({ license }) {
               <CopyKey licenseKey={license.licenseKey} />
             </div>
             <p className="text-xs text-gray-400 truncate mt-0.5">
-              {license.userId?.name} · {license.productId?.name} — {license.planId?.name}
+              {customerId ? (
+                <Link to={`/admin/users/${customerId}`} className="text-brand-600 hover:underline">
+                  {license.userId?.name}
+                </Link>
+              ) : (
+                license.userId?.name || "Customer"
+              )}{" "}
+              - {license.productId?.name} - {license.planId?.name}
             </p>
           </div>
 
