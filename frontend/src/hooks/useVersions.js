@@ -10,6 +10,13 @@ export const useAdminVersions = (productId, filters = {}) =>
     enabled: !!productId,
   });
 
+export const useAdminDownloadHistory = (params = {}) =>
+  useQuery({
+    queryKey: ["admin-download-history", params],
+    queryFn: () => api.get("/admin/downloads", { params }).then((r) => r.data),
+    keepPreviousData: true,
+  });
+
 export const useUploadVersion = (productId) => {
   const qc = useQueryClient();
   return useMutation({

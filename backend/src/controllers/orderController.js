@@ -4,12 +4,39 @@ const Plan = require("../models/Plan");
 const Product = require("../models/Product");
 const { AppError } = require("../utils/errorHandler");
 const { computeCheckoutAmount } = require("../services/paymentService");
-const { createCheckoutSession } = require("../services/stripeService");
-const { createLocalCheckout } = require("../services/localPspService");
 const { assertProviderOperational } = require("../services/paymentProviderStatus");
 const { getConfig } = require("../config/env");
 const { getPagination, paginationMeta } = require("../utils/pagination");
 const performanceConfig = require("../config/performance");
+const orderService = require("../services/orderService");
+const paymentManager = require("../services/paymentManager");
+
+exports.createCheckoutFoundation = asyncHandler(async (req, res) => {
+  const order = await orderService.createCheckoutOrder({
+    user: req.user,
+    items: req.body.items,
+    currency: req.body.currency || "USD",
+    couponCode: req.body.couponCode || "",
+    billingDetails: req.body.billingDetails || {},
+    req,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      checkoutSessionId: order.checkoutSessionId,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      discountAmount: order.discountAmount,
+      grandTotal: order.grandTotal,
+      currency: order.currency,
+    },
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/orders/checkout
@@ -61,35 +88,25 @@ exports.createCheckout = asyncHandler(async (req, res) => {
   const successUrl = `${clientUrl}/dashboard/orders?status=success&orderId=${order._id}`;
   const cancelUrl  = `${clientUrl}/dashboard/orders?status=cancelled&orderId=${order._id}`;
 
-  let checkoutUrl;
+  let checkoutSession;
   try {
-    if (gateway === "stripe") {
-      const session = await createCheckoutSession({
-        order,
-        productName: product.name,
-        planName: plan.name,
-        successUrl,
-        cancelUrl,
-        customerEmail: req.user.email,
-      });
-      order.gatewayCheckoutId = session.id;
-      checkoutUrl = session.url;
-    } else {
-      const session = await createLocalCheckout({
-        order,
-        productName: product.name,
-        planName: plan.name,
-        successUrl,
-        cancelUrl,
-        customerEmail: req.user.email,
-        customerName: req.user.name,
-      });
-      order.gatewayCheckoutId = session.checkoutId;
-      checkoutUrl = session.checkoutUrl;
-    }
+    checkoutSession = await paymentManager.createCheckoutSession(gateway, {
+      order,
+      productName: product.name,
+      planName: plan.name,
+      successUrl,
+      cancelUrl,
+      customerEmail: req.user.email,
+      customerName: req.user.name,
+    });
+    order.gatewayCheckoutId = checkoutSession.sessionId;
+    order.checkoutSessionId = order.checkoutSessionId || checkoutSession.sessionId;
+    order.paymentProvider = gateway;
+    order.paymentStatus = "pending";
     await order.save();
   } catch (err) {
     order.status = "failed";
+    order.paymentStatus = "failed";
     order.failureReason = err.message;
     await order.save();
     throw new AppError(`Could not start checkout: ${err.message}`, 502);
@@ -99,7 +116,9 @@ exports.createCheckout = asyncHandler(async (req, res) => {
     success: true,
     data: {
       orderId: order._id,
-      checkoutUrl,
+      checkoutUrl: checkoutSession.checkoutUrl,
+      checkoutSessionId: checkoutSession.sessionId,
+      expiresAt: checkoutSession.expiresAt,
       amount,
       currency,
       discountAmount,
@@ -125,14 +144,14 @@ exports.getMyOrders = asyncHandler(async (req, res) => {
       .limit(limit)
       .populate("productId", "name")
       .populate("planId", "name")
-      .populate("licenseId", "licenseKey")
+      .populate("licenseId", "licenseKey status")
       .lean(),
     Order.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
-    data: orders,
+    data: orders.map(orderService.orderAccessPayload),
     pagination: paginationMeta({ page, limit, total }),
   });
 });
@@ -144,8 +163,52 @@ exports.getMyOrder = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
     .populate("productId", "name")
     .populate("planId", "name")
-    .populate("licenseId", "licenseKey")
+    .populate("licenseId", "licenseKey status")
     .lean();
   if (!order) throw new AppError("Order not found.", 404);
-  res.json({ success: true, data: order });
+  res.json({ success: true, data: orderService.orderAccessPayload(order) });
+});
+
+exports.retryPayment = asyncHandler(async (req, res) => {
+  const order = await Order.findOne({ _id: req.params.id, userId: req.user._id })
+    .populate("productId", "name")
+    .populate("planId", "name");
+  if (!order) throw new AppError("Order not found.", 404);
+  if (!["draft", "pending", "failed", "cancelled", "expired"].includes(order.status)) {
+    throw new AppError("This order cannot be retried.", 400);
+  }
+  if (!["stripe", "local"].includes(order.gateway)) {
+    throw new AppError("This order does not have a retryable payment provider.", 400);
+  }
+
+  assertProviderOperational(order.gateway);
+  const clientUrl = getConfig().app.clientOrigins[0];
+  const successUrl = `${clientUrl}/dashboard/orders?status=success&orderId=${order._id}`;
+  const cancelUrl = `${clientUrl}/dashboard/orders?status=cancelled&orderId=${order._id}`;
+  const checkoutSession = await paymentManager.createCheckoutSession(order.gateway, {
+    order,
+    productName: order.productId?.name || "Product",
+    planName: order.planId?.name || "Plan",
+    successUrl,
+    cancelUrl,
+    customerEmail: req.user.email,
+    customerName: req.user.name,
+  });
+
+  order.status = "pending";
+  order.paymentStatus = "pending";
+  order.gatewayCheckoutId = checkoutSession.sessionId;
+  order.checkoutSessionId = checkoutSession.sessionId;
+  order.failureReason = "";
+  await order.save();
+
+  res.json({
+    success: true,
+    data: {
+      orderId: order._id,
+      checkoutUrl: checkoutSession.checkoutUrl,
+      checkoutSessionId: checkoutSession.sessionId,
+      expiresAt: checkoutSession.expiresAt,
+    },
+  });
 });

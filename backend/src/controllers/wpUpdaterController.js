@@ -11,6 +11,10 @@ const { isNewerVersion } = require("../utils/semver");
 const { writeAuditLog } = require("../utils/auditLog");
 const { logInfo } = require("../utils/logger");
 const licenseEngineConfig = require("../config/licenseEngine");
+const {
+  markExpiredIfNeeded,
+  entitlementSummary,
+} = require("../services/licenseLifecycleService");
 
 const TOKEN_TTL_MS = licenseEngineConfig.downloads.updaterTokenTtlMs;
 const UPDATE_PURPOSE = "wordpress_update";
@@ -49,8 +53,8 @@ async function resolveEntitlement({ licenseKey, pluginSlug, normalizedDomain }) 
 
   if (!license) return { error: "invalid_license" };
   if (!license.userId) return { error: "customer_missing" };
-  if (license.status !== "active") return { error: "inactive_license" };
-  if (isPast(license.expiresAt)) return { error: "expired_license" };
+  await markExpiredIfNeeded(license);
+  if (!entitlementSummary(license).canUpdate) return { error: license.status === "expired" ? "expired_license" : "inactive_license" };
   if (!license.productId || license.productId.slug !== pluginSlug) return { error: "not_entitled" };
   if (license.productId.status === "archived") return { error: "product_archived" };
   if (!license.activeDomains.some((entry) => entry.domain === normalizedDomain)) return { error: "domain_not_activated" };
@@ -192,7 +196,11 @@ exports.download = asyncHandler(async (req, res) => {
     PluginVersion.findById(download.pluginVersionId),
   ]);
 
-  if (!license || license.status !== "active" || isPast(license.expiresAt)) {
+  if (!license) {
+    return unauthorized(res, "License is no longer active.");
+  }
+  await markExpiredIfNeeded(license);
+  if (!entitlementSummary(license).canUpdate) {
     return unauthorized(res, "License is no longer active.");
   }
   if (!version || !version.isPublished || version.productId.toString() !== license.productId._id.toString()) {

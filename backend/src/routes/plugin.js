@@ -16,5 +16,6 @@ router.post("/deactivate",      limiter,      plugin.deactivate);
 router.post("/check",           checkLimiter, plugin.check);
 router.post("/replace-domain",  limiter,      plugin.replaceDomain);
 router.post("/update-check",    checkLimiter, plugin.updateCheck);
+router.post("/heartbeat",       checkLimiter, plugin.heartbeat);
 
 module.exports = router;

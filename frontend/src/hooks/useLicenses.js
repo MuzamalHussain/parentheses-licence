@@ -10,6 +10,49 @@ export const useAdminDashboard = () =>
     staleTime: 60_000,
   });
 
+export const useAdminAnalytics = (scope = "executive", params = {}) =>
+  useQuery({
+    queryKey: ["admin-analytics", scope, params],
+    queryFn: () => api.get(`/admin/analytics/${scope}`, { params }).then((r) => r.data.data),
+    staleTime: 60_000,
+  });
+
+export const useAdminWorkflowOverview = () =>
+  useQuery({
+    queryKey: ["admin-workflows-overview"],
+    queryFn: () => api.get("/admin/workflows/overview").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useAdminWorkflowJobs = (params = {}) =>
+  useQuery({
+    queryKey: ["admin-workflow-jobs", params],
+    queryFn: () => api.get("/admin/workflows/jobs", { params }).then((r) => r.data.data),
+    keepPreviousData: true,
+  });
+
+export const useAdminOperationsDashboard = (params = {}) =>
+  useQuery({
+    queryKey: ["admin-operations-dashboard", params],
+    queryFn: () => api.get("/admin/operations/dashboard", { params }).then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useOperationsAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, body = {} }) =>
+      api.post(`/admin/operations/maintenance/${action}`, body).then((r) => r.data),
+    onSuccess: () => {
+      toast.success("Operation completed.");
+      qc.invalidateQueries({ queryKey: ["admin-operations-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["admin-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["admin-workflows-overview"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Operation failed."),
+  });
+};
+
 // ── Admin Licenses ────────────────────────────────────────────────────────────
 export const useAdminLicenses = (params = {}) =>
   useQuery({
@@ -23,6 +66,13 @@ export const useAdminLicense = (id) =>
     queryKey: ["admin-license", id],
     queryFn: () => api.get(`/admin/licenses/${id}`).then((r) => r.data.data),
     enabled: !!id,
+  });
+
+export const useAdminLicenseSites = (id, enabled = true) =>
+  useQuery({
+    queryKey: ["admin-license-sites", id],
+    queryFn: () => api.get(`/admin/licenses/${id}/sites`).then((r) => r.data.data),
+    enabled: !!id && enabled,
   });
 
 export const useAdminLicenseStats = () =>
@@ -57,6 +107,18 @@ export const useLicenseAction = () => {
         reinstate: "License reinstated.",
         revoke: "License revoked.",
         "reset-activations": "Activations reset.",
+        activate: "License activated.",
+        expire: "License expired.",
+        cancel: "License cancelled.",
+        renew: "License renewed.",
+        transfer: "License transferred.",
+        "change-plan": "License plan changed.",
+        "extend-expiration": "Expiration extended.",
+        "convert-trial": "Trial converted.",
+        "convert-lifetime": "License converted to lifetime.",
+        "manual-activate": "Domain manually activated.",
+        "force-deactivate": "Domain force deactivated.",
+        "site-action": "Site action completed.",
       };
       toast.success(msgs[action] || "Done.");
       qc.invalidateQueries({ queryKey: ["admin-licenses"] });
@@ -81,6 +143,26 @@ export const useMyLicense = (id) =>
     queryFn: () => api.get(`/licenses/${id}`).then((r) => r.data.data),
     enabled: !!id,
   });
+
+export const useMyLicenseSites = (id, enabled = true) =>
+  useQuery({
+    queryKey: ["my-license-sites", id],
+    queryFn: () => api.get(`/licenses/${id}/sites`).then((r) => r.data.data),
+    enabled: !!id && enabled,
+  });
+
+export const useRenameSite = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ licenseId, domain, siteName }) =>
+      api.post(`/licenses/${licenseId}/rename-site`, { domain, siteName }).then((r) => r.data),
+    onSuccess: (_, { licenseId }) => {
+      toast.success("Site renamed.");
+      qc.invalidateQueries({ queryKey: ["my-license-sites", licenseId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Failed to rename site."),
+  });
+};
 
 export const useMyLicenseSummary = () =>
   useQuery({

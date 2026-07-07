@@ -1,102 +1,31 @@
-const { verifyWebhookSignature } = require("../services/localPspService");
-const { confirmOrderPaid } = require("../services/paymentService");
-const {
-  beginWebhookProcessing,
-  markWebhookProcessed,
-  markWebhookFailed,
-} = require("../utils/webhookGuard");
-const Order = require("../models/Order");
-const apiSecurityConfig = require("../config/apiSecurity");
+const paymentManager = require("../services/paymentManager");
+const { validateWebhookTimestamp } = require("../services/paymentProviders/LocalPspPaymentProvider");
 const { logError } = require("../utils/logger");
 
-function validateWebhookTimestamp(rawTimestamp) {
-  if (!rawTimestamp) return false;
-  const timestampMs = Number(rawTimestamp) * (String(rawTimestamp).length === 10 ? 1000 : 1);
-  if (!Number.isFinite(timestampMs)) return false;
-  const ageSeconds = Math.abs(Date.now() - timestampMs) / 1000;
-  return ageSeconds <= apiSecurityConfig.webhooks.timestampToleranceSeconds;
-}
-
-/**
- * GENERIC webhook handler for the local PK PSP aggregator.
- *
- * Expected payload shape (placeholder — adjust field names once a specific
- * aggregator is chosen, per execution plan Week 5 Day 4):
- *   {
- *     event_id: "evt_xxx",
- *     event_type: "payment.succeeded" | "payment.failed",
- *     transaction_id: "txn_xxx",
- *     order_id: "<our Order._id>",
- *     amount: 13500.00,
- *     currency: "PKR",
- *     status: "succeeded" | "failed"
- *   }
- *
- * IMPORTANT: like the Stripe route, this must receive the RAW body for
- * HMAC verification — mounted with express.raw() before express.json().
- */
 async function handleLocalPspWebhook(req, res) {
-  const rawBody = req.body.toString("utf8");
-  const signature = req.headers["x-signature"] || req.headers["x-psp-signature"];
-  const timestamp = req.headers["x-webhook-timestamp"] || req.headers["x-psp-timestamp"];
-
-  if (!validateWebhookTimestamp(timestamp)) {
-    logError("local_psp_webhook.timestamp_verification_failed");
-    return res.status(400).json({ success: false, message: "Invalid webhook timestamp.", requestId: req.id });
-  }
-
-  if (!verifyWebhookSignature(rawBody, signature)) {
-    logError("local_psp_webhook.signature_verification_failed");
-    return res.status(400).json({ success: false, message: "Invalid signature.", requestId: req.id });
-  }
-
-  let payload;
+  let event;
   try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    return res.status(400).json({ success: false, message: "Invalid JSON payload.", requestId: req.id });
-  }
-
-  const eventId = payload.event_id || `${payload.transaction_id}-${payload.status}`;
-
-  // ── Idempotency guard ─────────────────────────────────────────────────────────
-  const { shouldProcess } = await beginWebhookProcessing({
-    gateway: "local",
-    eventId,
-    eventType: payload.event_type || "",
-    payload,
-  });
-
-  if (!shouldProcess) {
-    return res.json({ received: true, duplicate: true });
+    event = paymentManager.parseWebhookEvent("local", {
+      rawBody: req.body,
+      headers: req.headers,
+    });
+  } catch (err) {
+    const isTimestamp = err.code === "INVALID_TIMESTAMP";
+    logError(isTimestamp ? "local_psp_webhook.timestamp_verification_failed" : "local_psp_webhook.signature_verification_failed");
+    return res.status(400).json({
+      success: false,
+      message: isTimestamp ? "Invalid webhook timestamp." : "Invalid signature.",
+      requestId: req.id,
+    });
   }
 
   try {
-    if (payload.status === "succeeded" || payload.event_type === "payment.succeeded") {
-      if (!payload.order_id) throw new Error("Local PSP webhook missing order_id");
-
-      await confirmOrderPaid(payload.order_id, {
-        gateway: "local",
-        gatewayTransactionId: payload.transaction_id,
-        amount: Number(payload.amount),
-        currency: payload.currency || "PKR",
-        rawWebhookPayload: payload,
-      });
-    }
-
-    if (payload.status === "failed" || payload.event_type === "payment.failed") {
-      await Order.updateOne(
-        { _id: payload.order_id, status: "pending" },
-        { status: "failed", failureReason: payload.failure_reason || "Payment failed." }
-      );
-    }
-
-    await markWebhookProcessed("local", eventId);
-    res.json({ received: true });
+    const result = await paymentManager.processWebhookEvent(event, req);
+    if (result.duplicate) return res.json({ received: true, duplicate: true, status: result.status });
+    return res.json({ received: true, ignored: result.ignored });
   } catch (err) {
     logError("local_psp_webhook.processing_failed", { error: err.message });
-    await markWebhookFailed("local", eventId, err.message);
-    res.status(500).json({ success: false, message: "Webhook processing failed.", requestId: req.id });
+    return res.status(500).json({ success: false, message: "Webhook processing failed.", requestId: req.id });
   }
 }
 

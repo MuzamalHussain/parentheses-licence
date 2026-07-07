@@ -4,9 +4,12 @@ const License = require("../models/License");
 const AuditLog = require("../models/AuditLog");
 const { getCached } = require("../utils/ttlCache");
 const performanceConfig = require("../config/performance");
+const AnalyticsService = require("../services/analytics/AnalyticsService");
+const WorkflowEngine = require("../services/workflows/WorkflowEngine");
 
 exports.getDashboardStats = asyncHandler(async (req, res) => {
-  const data = await getCached("admin:dashboard:v1", performanceConfig.cache.dashboardTtlMs, async () => {
+  const period = req.query.period || "30d";
+  const data = await getCached(`admin:dashboard:v1:${req.user?.role || "unknown"}:${period}`, performanceConfig.cache.dashboardTtlMs, async () => {
     const [
       totalCustomers,
       licenseStatusCounts,
@@ -47,7 +50,25 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
       licenseStats.total += count;
     });
 
+    let analytics = null;
+    try {
+      analytics = await AnalyticsService.executive({ period });
+    } catch {
+      analytics = null;
+    }
+
+    let workflows = null;
+    if (req.user?.role === "admin") {
+      try {
+        workflows = await WorkflowEngine.stats();
+      } catch {
+        workflows = null;
+      }
+    }
+
     return {
+      analytics,
+      workflows,
       customers: { total: totalCustomers, newLast30Days: newCustomers30d },
       licenses: licenseStats,
       recentLicenses,

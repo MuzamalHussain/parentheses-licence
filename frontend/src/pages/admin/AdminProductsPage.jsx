@@ -64,6 +64,8 @@ const productSchema = z.object({
 const planSchema = z.object({
   name: z.string().min(1),
   allowedSites: z.coerce.number().int().min(0),
+  planType: z.enum(["single_site", "3_sites", "5_sites", "10_sites", "agency", "unlimited", "lifetime", "trial", "custom"]).optional(),
+  upgradeRank: z.coerce.number().int().min(0).optional(),
   priceUSD: z.coerce.number().min(0),
   priceLocal: z.coerce.number().min(0),
   durationDays: z.coerce.number().int().min(0).optional(),
@@ -336,7 +338,7 @@ function PlanModal({ productId, existing, onClose }) {
   const isEdit = !!existing;
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(planSchema),
-    defaultValues: existing || { renewalType: "recurring", durationDays: 365 },
+    defaultValues: existing || { renewalType: "recurring", durationDays: 365, planType: "single_site", upgradeRank: 1 },
   });
 
   const onSubmit = async (values) => {
@@ -372,6 +374,18 @@ function PlanModal({ productId, existing, onClose }) {
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Allowed sites" error={errors.allowedSites?.message} required>
               <Input {...register("allowedSites")} type="number" error={errors.allowedSites} />
+            </FormField>
+            <FormField label="Plan type" error={errors.planType?.message}>
+              <select {...register("planType")} className="input">
+                {["single_site", "3_sites", "5_sites", "10_sites", "agency", "unlimited", "lifetime", "trial", "custom"].map((type) => (
+                  <option key={type} value={type}>{type.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Upgrade rank" error={errors.upgradeRank?.message}>
+              <Input {...register("upgradeRank")} type="number" error={errors.upgradeRank} />
             </FormField>
             <FormField label="Duration days" error={errors.durationDays?.message}>
               <Input {...register("durationDays")} type="number" error={errors.durationDays} />

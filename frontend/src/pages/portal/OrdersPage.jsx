@@ -1,14 +1,28 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { ShoppingCart, Loader2, CheckCircle2, XCircle, Clock, Key } from "lucide-react";
+import { ShoppingCart, Loader2, CheckCircle2, XCircle, Clock, Key, Download } from "lucide-react";
 import toast from "react-hot-toast";
-import { useMyOrders, useMyOrder } from "../../hooks/useOrders";
+import { useMyOrders, useMyOrder, useRetryPayment } from "../../hooks/useOrders";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Pagination from "../../components/ui/Pagination";
 
-// Banner shown right after redirect back from Stripe / local gateway.
-// Polls the order briefly since the webhook may arrive a second or two
-// after the redirect itself.
+function isComplete(order) {
+  return ["paid", "completed"].includes(order?.status);
+}
+
+function formatMoney(order) {
+  const value = Number(order.grandTotal ?? order.amount ?? 0);
+  const prefix = order.currency === "USD" ? "$" : order.currency === "PKR" ? "Rs " : `${order.currency || ""} `;
+  return `${prefix}${value.toLocaleString()}`;
+}
+
+function productLabel(order) {
+  if (order.items?.length) {
+    return order.items.map((item) => `${item.productName || order.productId?.name || "Product"} - ${item.planName || order.planId?.name || "Plan"}`).join(", ");
+  }
+  return `${order.productId?.name || "Product"} - ${order.planId?.name || "Plan"}`;
+}
+
 function RedirectBanner() {
   const [params, setParams] = useSearchParams();
   const status = params.get("status");
@@ -22,10 +36,10 @@ function RedirectBanner() {
       const t = setTimeout(() => { refetch(); setAttempt((a) => a + 1); }, 2000);
       return () => clearTimeout(t);
     }
-    if (status === "success" && order?.status === "paid") {
+    if (status === "success" && isComplete(order)) {
       toast.success("Payment confirmed! Your license is ready.");
     }
-  }, [order, attempt, status]);
+  }, [order, attempt, status, refetch]);
 
   if (!status || !orderId) return null;
 
@@ -50,7 +64,7 @@ function RedirectBanner() {
         </div>
       );
     }
-    if (order.status === "paid") {
+    if (isComplete(order)) {
       return (
         <div className="card p-4 flex items-center gap-3 bg-green-50 border-green-200">
           <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
@@ -71,9 +85,7 @@ function RedirectBanner() {
     return (
       <div className="card p-4 flex items-center gap-3 bg-red-50 border-red-200">
         <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-        <p className="text-sm text-red-700 flex-1">
-          Payment did not complete ({order.status}). {order.failureReason}
-        </p>
+        <p className="text-sm text-red-700 flex-1">Payment did not complete ({order.status}). {order.failureReason}</p>
         <button onClick={dismiss} className="text-xs text-red-600 hover:underline">Dismiss</button>
       </div>
     );
@@ -82,14 +94,15 @@ function RedirectBanner() {
 }
 
 function statusIcon(status) {
-  if (status === "paid") return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-  if (status === "pending") return <Clock className="w-4 h-4 text-yellow-500" />;
+  if (["paid", "completed"].includes(status)) return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+  if (["draft", "pending", "processing"].includes(status)) return <Clock className="w-4 h-4 text-yellow-500" />;
   return <XCircle className="w-4 h-4 text-red-400" />;
 }
 
 export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useMyOrders({ page, limit: 15 });
+  const retryPayment = useRetryPayment();
 
   const orders = data?.data || [];
   const pagination = data?.pagination || {};
@@ -119,23 +132,33 @@ export default function OrdersPage() {
         <div className="card overflow-hidden">
           <div className="divide-y divide-gray-50">
             {orders.map((o) => (
-              <div key={o._id} className="flex items-center justify-between px-5 py-4">
+              <div key={o._id} className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="flex items-center gap-3 min-w-0">
                   {statusIcon(o.status)}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800">
-                      {o.productId?.name} — {o.planId?.name}
-                    </p>
+                    <p className="text-sm font-medium text-gray-800 truncate">{productLabel(o)}</p>
                     <p className="text-xs text-gray-400">
-                      {new Date(o.createdAt).toLocaleDateString()} · {o.gateway === "stripe" ? "Card" : "Local gateway"}
+                      <span className="font-mono">{o.orderNumber || o._id}</span> · {new Date(o.createdAt).toLocaleDateString()} · {o.gateway === "none" ? "Checkout session" : o.gateway}
                       {o.licenseId && <> · <span className="font-mono">{o.licenseId.licenseKey}</span></>}
                     </p>
+                    {isComplete(o) && (
+                      <p className="text-xs text-gray-500 mt-1 flex flex-wrap gap-2">
+                        <span className="inline-flex items-center gap-1"><Download className="w-3 h-3" /> Downloads {o.downloadEligible ? "enabled" : "pending"}</span>
+                        <span>Renewal {o.renewalEligible ? "eligible" : "pending"}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className="text-sm font-semibold text-gray-800">
-                    {o.currency === "USD" ? "$" : "₨"}{o.amount?.toLocaleString()}
-                  </span>
+                  <span className="text-sm font-semibold text-gray-800">{formatMoney(o)}</span>
+                  {["failed", "cancelled", "expired"].includes(o.status) && ["stripe", "local"].includes(o.gateway) && (
+                    <button
+                      onClick={() => retryPayment.mutate(o._id)}
+                      className="text-xs font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      Retry
+                    </button>
+                  )}
                   <StatusBadge status={o.status} />
                 </div>
               </div>

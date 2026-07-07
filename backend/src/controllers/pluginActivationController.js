@@ -8,6 +8,12 @@ const { writeAuditLog } = require("../utils/auditLog");
 const { isNewerVersion } = require("../utils/semver");
 const { logInfo } = require("../utils/logger");
 const licenseEngineConfig = require("../config/licenseEngine");
+const {
+  ACTIVE_STATES,
+  markExpiredIfNeeded,
+  entitlementSummary,
+} = require("../services/licenseLifecycleService");
+const siteActivation = require("../services/siteActivationService");
 
 const populateLicenseForPlugin = (query) =>
   query
@@ -29,20 +35,15 @@ async function resolveLicense(licenseKey, productSlug) {
   if (!license.productId) return { error: "Product not found.", code: 403 };
   if (!license.planId) return { error: "License plan not found.", code: 403 };
   if (license.status === "revoked") return { error: "This license has been revoked.", code: 403 };
+  if (license.status === "cancelled") return { error: "This license has been cancelled.", code: 403 };
   if (license.status === "suspended") return { error: "This license is currently suspended. Contact support.", code: 403 };
   if (license.status === "expired") return { error: "This license has expired.", code: 403 };
 
-  if (isPastExpiry(license.expiresAt)) {
-    license.status = "expired";
-    await license.save({ validateBeforeSave: false });
-    await writeAuditLog({
-      action: "license.expired",
-      targetType: "License",
-      targetId: license._id,
-      metadata: { licenseKey: maskLicenseKey(license.licenseKey), expiresAt: license.expiresAt },
-    });
+  await markExpiredIfNeeded(license);
+  if (license.status === "expired") {
     return { error: "This license has expired.", code: 403 };
   }
+  if (!entitlementSummary(license).canActivate) return { error: "This license is not eligible for activation.", code: 403 };
 
   if (productSlug && license.productId?.slug !== productSlug) {
     return { error: "This license key is not valid for this product.", code: 403 };
@@ -84,6 +85,24 @@ function maskLicenseKey(licenseKey = "") {
   const compact = String(licenseKey).replace(/-/g, "");
   if (compact.length <= 8) return "****";
   return `${compact.slice(0, 4)}...${compact.slice(-4)}`;
+}
+
+function canUseSiteActivationMirror(license) {
+  return /^[0-9a-fA-F]{24}$/.test(String(license?._id || ""));
+}
+
+async function recordActivationMirror({ license, domain, input, actorRole = "plugin", req }) {
+  if (canUseSiteActivationMirror(license)) {
+    return siteActivation.upsertSiteActivation({ license, input: { ...input, domain }, actorRole, req });
+  }
+  await LicenseActivation.create({
+    licenseId: license._id,
+    domain,
+    action: actorRole === "admin" ? "manual_activate" : "activate",
+    actorRole,
+    ipAddress: req?.ip || "",
+  });
+  return null;
 }
 
 async function reloadLicenseForResponse(licenseId) {
@@ -157,6 +176,7 @@ exports.activate = asyncHandler(async (req, res) => {
   }
 
   if (license.activeDomains.some((d) => d.domain === normalizedDomain)) {
+    await recordActivationMirror({ license, domain: normalizedDomain, input: req.body, actorRole: "plugin", req }).catch(() => {});
     logInfo("license_activation.already_active", {
       status: "already_active",
       license: maskLicenseKey(normalizedKey),
@@ -169,7 +189,7 @@ exports.activate = asyncHandler(async (req, res) => {
   const updatedLicense = await License.findOneAndUpdate(
     {
       _id: license._id,
-      status: "active",
+      status: license.status,
       "activeDomains.domain": { $ne: normalizedDomain },
       $and: [
         { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date(activatedAt.getTime() - (licenseEngineConfig.expiration.gracePeriodDays * 24 * 60 * 60 * 1000)) } }] },
@@ -206,6 +226,9 @@ exports.activate = asyncHandler(async (req, res) => {
     if (latest.status === "revoked") {
       return res.status(403).json({ success: false, message: "This license has been revoked." });
     }
+    if (latest.status === "cancelled") {
+      return res.status(403).json({ success: false, message: "This license has been cancelled." });
+    }
     if (latest.status === "expired" || isPastExpiry(latest.expiresAt)) {
       return res.status(403).json({ success: false, message: "This license has expired." });
     }
@@ -220,13 +243,7 @@ exports.activate = asyncHandler(async (req, res) => {
     return limitExceededResponse(res, latest);
   }
 
-  await LicenseActivation.create({
-    licenseId: updatedLicense._id,
-    domain: normalizedDomain,
-    action: "activate",
-    actorRole: "plugin",
-    ipAddress: req.ip || "",
-  });
+  await recordActivationMirror({ license: updatedLicense, domain: normalizedDomain, input: req.body, actorRole: "plugin", req });
 
   await writeAuditLog({
     action: "license.domain_activated",
@@ -275,12 +292,14 @@ exports.deactivate = asyncHandler(async (req, res) => {
     return res.json({ success: true, message: "Domain was not activated on this license." });
   }
 
-  await LicenseActivation.create({
-    licenseId: updatedLicense._id,
-    domain: normalizedDomain,
-    action: "deactivate",
-    actorRole: "plugin",
-    ipAddress: req.ip || "",
+  await siteActivation.deactivateSite({ license: updatedLicense, domain: normalizedDomain, actorRole: "plugin", req }).catch(async () => {
+    await LicenseActivation.create({
+      licenseId: updatedLicense._id,
+      domain: normalizedDomain,
+      action: "deactivate",
+      actorRole: "plugin",
+      ipAddress: req.ip || "",
+    });
   });
 
   await writeAuditLog({
@@ -318,6 +337,9 @@ exports.check = asyncHandler(async (req, res) => {
   if (!domainValid) {
     return failedValidation(res, { req, license, domain: normalizedDomain, reason: "domain_not_activated" });
   }
+  await siteActivation.validateSite({ license, input: { ...req.body, domain: normalizedDomain }, req }).catch(async () => {
+    await siteActivation.upsertSiteActivation({ license, input: { ...req.body, domain: normalizedDomain }, actorRole: "plugin", req }).catch(() => {});
+  });
 
   await auditPublicLicenseEvent({ req, action: "license.validated", license, domain: normalizedDomain });
 
@@ -401,6 +423,9 @@ exports.updateCheck = asyncHandler(async (req, res) => {
     await auditPublicLicenseEvent({ req, action: "license.validation_failed", license, domain: normalizedDomain, reason: "domain_not_activated" });
     return res.status(403).json({ success: false, message: "License is invalid or not entitled for this domain.", updateAvailable: false });
   }
+  await siteActivation.validateSite({ license, input: { ...req.body, domain: normalizedDomain }, req }).catch(async () => {
+    await siteActivation.upsertSiteActivation({ license, input: { ...req.body, domain: normalizedDomain }, actorRole: "plugin", req }).catch(() => {});
+  });
 
   const latest = await PluginVersion.findOne({
     productId: license.productId._id,
@@ -428,6 +453,31 @@ exports.updateCheck = asyncHandler(async (req, res) => {
     minWpVersion: latest.minWpVersion || null,
     minPhpVersion: latest.minPhpVersion || null,
     releasedAt: latest.releasedAt,
+  });
+});
+
+exports.heartbeat = asyncHandler(async (req, res) => {
+  const { licenseKey, domain, product: productSlug } = req.body;
+  if (!licenseKey) throw new AppError("licenseKey is required.", 422);
+  if (!domain) throw new AppError("domain is required.", 422);
+
+  const { normalizedDomain, error: domainError, code: domainCode } = validateDomainInput(domain);
+  if (domainError) throw new AppError(domainError, domainCode);
+
+  const { license, error, code } = await resolveLicense(licenseKey.toUpperCase().trim(), productSlug);
+  if (error) return res.status(code).json({ success: false, message: error });
+  if (!license.activeDomains.some((entry) => entry.domain === normalizedDomain)) {
+    return res.status(403).json({ success: false, message: "Site is not activated on this license." });
+  }
+
+  const site = await siteActivation.heartbeat({ license, input: { ...req.body, domain: normalizedDomain }, req });
+  return res.json({
+    success: true,
+    message: "Heartbeat recorded.",
+    licenseStatus: license.status,
+    environment: site.environment,
+    pluginVersion: site.pluginVersion,
+    lastHeartbeat: site.lastHeartbeatAt,
   });
 });
 

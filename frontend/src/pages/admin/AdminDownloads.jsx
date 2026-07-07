@@ -9,6 +9,8 @@ import { Button, Input, FormField, Alert } from "../../components/ui";
 import {
   useAdminVersions, useUploadVersion, useVersionAction, useDeleteVersion, useUpdateVersion
 } from "../../hooks/useVersions";
+import { useAdminDownloadHistory } from "../../hooks/useVersions";
+import Pagination from "../../components/ui/Pagination";
 
 const VERSION_STATUSES = ["draft", "published", "hidden", "archived", "deprecated"];
 const RELEASE_CHANNELS = ["stable", "release_candidate", "beta", "alpha", "internal", "deprecated"];
@@ -347,6 +349,7 @@ export default function AdminDownloads() {
   const [productId, setProductId] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [filters, setFilters] = useState({ search: "", status: "", releaseChannel: "", latest: "" });
+  const [historyPage, setHistoryPage] = useState(1);
 
   useEffect(() => {
     api.get("/products?limit=50").then((r) => {
@@ -362,6 +365,8 @@ export default function AdminDownloads() {
     latest: filters.latest || undefined,
   }), [filters]);
   const { data: versions, isLoading } = useAdminVersions(productId, queryFilters);
+  const { data: historyData, isLoading: historyLoading } = useAdminDownloadHistory({ page: historyPage, limit: 10 });
+  const history = historyData?.data || [];
 
   return (
     <>
@@ -434,6 +439,60 @@ export default function AdminDownloads() {
             {versions.map((v) => <VersionRow key={v._id} version={v} productId={productId} />)}
           </div>
         )}
+
+        <div className="card overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900">Download Distribution History</h2>
+            {historyLoading && <Loader2 className="w-4 h-4 text-brand-500 animate-spin" />}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-400">
+                <tr>
+                  <th className="text-left font-medium px-4 py-3">Customer</th>
+                  <th className="text-left font-medium px-4 py-3">Product</th>
+                  <th className="text-left font-medium px-4 py-3">Version</th>
+                  <th className="text-left font-medium px-4 py-3">Channel</th>
+                  <th className="text-left font-medium px-4 py-3">Download Time</th>
+                  <th className="text-left font-medium px-4 py-3">IP</th>
+                  <th className="text-left font-medium px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {history.map((item) => (
+                  <tr key={item._id}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800">{item.userId?.name || "Unknown"}</p>
+                      <p className="text-xs text-gray-400">{item.userId?.email || "-"}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{item.productId?.name || "-"}</td>
+                    <td className="px-4 py-3 font-mono text-gray-700">v{item.pluginVersionId?.versionNumber || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">{titleize(item.releaseChannel || item.pluginVersionId?.releaseChannel)}</td>
+                    <td className="px-4 py-3 text-gray-500">{new Date(item.usedAt || item.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.ipAddress || "-"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        item.status === "completed" ? "bg-green-100 text-green-700" :
+                        item.status === "denied" ? "bg-red-100 text-red-700" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        {titleize(item.status || (item.usedAt ? "completed" : "authorized"))}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {!historyLoading && history.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-gray-400" colSpan={7}>No download activity yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-3 border-t border-gray-100">
+            <Pagination {...(historyData?.pagination || {})} onPage={setHistoryPage} />
+          </div>
+        </div>
       </div>
     </>
   );

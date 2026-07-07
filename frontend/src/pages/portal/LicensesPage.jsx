@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Key, Globe, Loader2, ChevronDown, Copy, Check, AlertCircle } from "lucide-react";
-import { useMyLicenses, useDeactivateDomain } from "../../hooks/useLicenses";
+import { useMyLicenses, useDeactivateDomain, useMyLicenseSites } from "../../hooks/useLicenses";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Pagination from "../../components/ui/Pagination";
 import { Button } from "../../components/ui";
@@ -45,12 +45,15 @@ function DeactivateModal({ licenseId, domain, onClose }) {
 function LicenseCard({ license }) {
   const [expanded, setExpanded] = useState(false);
   const [deactivate, setDeactivate] = useState(null);
+  const { data: sites = [] } = useMyLicenseSites(license._id, expanded);
 
   const exp = license.expiresAt ? new Date(license.expiresAt) : null;
   const isExpired = exp && exp < new Date();
   const slotsUsed = license.activeDomains?.length ?? 0;
   const slotsTotal = license.allowedSites === 0 ? "∞" : license.allowedSites;
+  const remaining = license.lifecycle?.remainingActivations;
   const daysLeft = exp ? Math.ceil((exp - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+  const renewalDate = license.subscription?.renewalDate || license.renewal?.nextRenewalAt || license.expiresAt;
 
   return (
     <>
@@ -99,6 +102,19 @@ function LicenseCard({ license }) {
               <span className="text-gray-400">Lifetime license</span>
             )}
           </div>
+          <div className="flex flex-wrap gap-2 mt-3 text-xs text-gray-500">
+            <span className={license.lifecycle?.canDownload ? "text-green-600" : "text-gray-400"}>
+              Downloads {license.lifecycle?.canDownload ? "enabled" : "disabled"}
+            </span>
+            <span className={license.lifecycle?.canUpdate ? "text-green-600" : "text-gray-400"}>
+              Updates {license.lifecycle?.canUpdate ? "enabled" : "disabled"}
+            </span>
+            <span>Remaining activations: {remaining === null || remaining === undefined ? "Unlimited" : remaining}</span>
+            <span>Renewal {license.lifecycle?.renewalEligible ? "eligible" : "not eligible"}</span>
+            <span>Upgrade {license.lifecycle?.upgradeEligible ? "eligible" : "not eligible"}</span>
+            <span>Grace: {license.lifecycle?.gracePeriodDays ?? 0} days</span>
+            {renewalDate && <span>Renewal date: {new Date(renewalDate).toLocaleDateString()}</span>}
+          </div>
         </div>
 
         {/* Expanded: domains */}
@@ -117,12 +133,14 @@ function LicenseCard({ license }) {
               </div>
             ) : (
               <div className="space-y-2">
-                {license.activeDomains.map((d) => (
+                {(sites.length ? sites : license.activeDomains).map((d) => (
                   <div key={d.domain} className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2">
                     <div>
-                      <p className="font-mono text-sm text-gray-800">{d.domain}</p>
+                      <p className="font-mono text-sm text-gray-800">{d.siteName || d.domain}</p>
                       <p className="text-xs text-gray-400">
+                        {d.environment ? `${d.environment} - ` : ""}
                         Activated {new Date(d.activatedAt).toLocaleDateString()}
+                        {d.lastContactAt ? ` - Last seen ${new Date(d.lastContactAt).toLocaleDateString()}` : ""}
                       </p>
                     </div>
                     {license.status === "active" && (

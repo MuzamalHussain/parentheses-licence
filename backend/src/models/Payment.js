@@ -10,7 +10,7 @@ const paymentSchema = new mongoose.Schema(
     },
     gateway: {
       type: String,
-      enum: ["stripe", "local"],
+      enum: ["stripe", "local", "paypal", "lemon_squeezy", "paddle", "manual"],
       required: true,
     },
     gatewayTransactionId: {
@@ -28,9 +28,12 @@ const paymentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["succeeded", "failed", "pending"],
+      enum: ["pending", "authorized", "succeeded", "failed", "cancelled", "refunded", "partially_refunded"],
       required: true,
     },
+    providerSessionId: { type: String, default: "", index: true },
+    providerEventId: { type: String, default: "" },
+    failureReason: { type: String, default: "" },
     // Full raw webhook payload — kept for dispute resolution / debugging.
     // Never displayed to the customer; admin-only via the Orders module.
     rawWebhookPayload: {

@@ -151,6 +151,8 @@ const versionQuerySchema = z.object({
 const createPlanSchema = z.object({
   name: z.string().min(1).max(100),
   allowedSites: z.number().int().min(0),
+  planType: z.enum(["single_site", "3_sites", "5_sites", "10_sites", "agency", "unlimited", "lifetime", "trial", "custom"]).optional(),
+  upgradeRank: z.number().int().min(0).optional(),
   priceUSD: z.number().min(0),
   priceLocal: z.number().min(0),
   durationDays: z.number().int().min(0).optional(),

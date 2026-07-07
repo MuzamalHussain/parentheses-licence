@@ -32,6 +32,8 @@ import AdminDomains from "./pages/admin/AdminDomains";
 import AdminDownloads from "./pages/admin/AdminDownloads";
 import AdminSupport from "./pages/admin/AdminSupport";
 import AdminAudit from "./pages/admin/AdminAudit";
+import AdminWorkflows from "./pages/admin/AdminWorkflows";
+import AdminOperations from "./pages/admin/AdminOperations";
 import AdminSettings from "./pages/admin/AdminSettings";
 
 const queryClient = new QueryClient({
@@ -70,6 +72,8 @@ export default function App() {
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
+                <Route path="/admin/workflows" element={<AdminWorkflows />} />
+                <Route path="/admin/operations" element={<AdminOperations />} />
               </Route>
             </Route>
 

@@ -11,12 +11,35 @@ const downloadSchema = new mongoose.Schema(
     licenseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "License",
-      required: true,
+      default: null,
     },
     pluginVersionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PluginVersion",
-      required: true,
+      default: null,
+    },
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      index: true,
+      default: null,
+    },
+    assetType: {
+      type: String,
+      enum: ["plugin_zip", "documentation_pdf", "release_notes", "checksum", "developer_package"],
+      default: "plugin_zip",
+      index: true,
+    },
+    assetPath: { type: String, default: "" },
+    fileName: { type: String, default: "" },
+    fileSizeBytes: { type: Number, default: 0 },
+    checksumSha256: { type: String, default: "" },
+    checksumMd5: { type: String, default: "" },
+    releaseChannel: {
+      type: String,
+      enum: ["stable", "release_candidate", "beta", "alpha", "internal", "deprecated"],
+      default: "stable",
+      index: true,
     },
     // The raw token is never stored — only its SHA-256 hash (same pattern as
     // password reset tokens). The token itself only ever lives in the URL.
@@ -46,10 +69,20 @@ const downloadSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    status: {
+      type: String,
+      enum: ["requested", "authorized", "denied", "completed", "expired", "invalid_signature", "missing_file"],
+      default: "authorized",
+      index: true,
+    },
+    deniedReason: { type: String, default: "" },
     ipAddress: {
       type: String,
       default: "",
     },
+    userAgent: { type: String, default: "" },
+    browser: { type: String, default: "" },
+    platform: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -57,7 +90,9 @@ const downloadSchema = new mongoose.Schema(
 downloadSchema.index({ userId: 1, createdAt: -1 });
 downloadSchema.index({ userId: 1, purpose: 1, createdAt: -1 });
 downloadSchema.index({ licenseId: 1, createdAt: -1 });
+downloadSchema.index({ licenseId: 1, status: 1, createdAt: -1 });
 downloadSchema.index({ pluginVersionId: 1, createdAt: -1 });
+downloadSchema.index({ productId: 1, createdAt: -1 });
 downloadSchema.index({ purpose: 1, usedAt: 1, expiresAt: 1 });
 
 module.exports = mongoose.model("Download", downloadSchema);

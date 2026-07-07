@@ -23,6 +23,10 @@ module.exports = {
   downloads: {
     customerTokenTtlMs: intEnv("LICENSE_DOWNLOAD_TOKEN_TTL_MS", 10 * 60 * 1000),
     updaterTokenTtlMs: intEnv("LICENSE_UPDATER_TOKEN_TTL_MS", 10 * 60 * 1000),
+    singleUse: boolEnv("LICENSE_DOWNLOAD_SINGLE_USE", true),
+    perLicenseLimit: intEnv("LICENSE_DOWNLOAD_PER_LICENSE_LIMIT", 0),
+    perVersionLimit: intEnv("LICENSE_DOWNLOAD_PER_VERSION_LIMIT", 0),
+    perDayLimit: intEnv("LICENSE_DOWNLOAD_PER_DAY_LIMIT", 0),
   },
   keys: {
     segments: intEnv("LICENSE_KEY_SEGMENTS", 4) || 4,

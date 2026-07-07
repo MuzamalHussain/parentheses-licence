@@ -6,14 +6,20 @@ const { writeAuditLog } = require("../utils/auditLog");
 const { getPagination, paginationMeta } = require("../utils/pagination");
 const { getCached } = require("../utils/ttlCache");
 const performanceConfig = require("../config/performance");
+const orderService = require("../services/orderService");
 
 // GET /api/v1/admin/orders
 exports.getOrders = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req.query);
 
   const filter = {};
-  if (req.query.status)  filter.status  = req.query.status;
+  if (req.query.status) filter.status = req.query.status;
   if (req.query.gateway) filter.gateway = req.query.gateway;
+  if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
+  if (req.query.search) {
+    const pattern = new RegExp(req.query.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    filter.$or = [{ orderNumber: pattern }, { gatewayCheckoutId: pattern }, { checkoutSessionId: pattern }];
+  }
 
   const [orders, total] = await Promise.all([
     Order.find(filter)
@@ -23,14 +29,14 @@ exports.getOrders = asyncHandler(async (req, res) => {
       .populate("userId", "name email")
       .populate("productId", "name")
       .populate("planId", "name")
-      .populate("licenseId", "licenseKey")
+      .populate("licenseId", "licenseKey status")
       .lean(),
     Order.countDocuments(filter),
   ]);
 
   res.json({
     success: true,
-    data: orders,
+    data: orders.map(orderService.orderAccessPayload),
     pagination: paginationMeta({ page, limit, total }),
   });
 });
@@ -61,8 +67,8 @@ exports.getOrderStats = asyncHandler(async (req, res) => {
           totalRevenueUSD: {
             $sum: {
               $cond: [
-                { $and: [{ $eq: ["$status", "paid"] }, { $eq: ["$currency", "USD"] }] },
-                "$amount",
+                { $and: [{ $in: ["$status", ["paid", "completed"]] }, { $eq: ["$currency", "USD"] }] },
+                { $ifNull: ["$grandTotal", "$amount"] },
                 0,
               ],
             },
@@ -71,7 +77,7 @@ exports.getOrderStats = asyncHandler(async (req, res) => {
       },
     ]);
 
-    const stats = { pending: 0, paid: 0, failed: 0, expired: 0, refunded: 0 };
+    const stats = { draft: 0, pending: 0, processing: 0, completed: 0, paid: 0, cancelled: 0, failed: 0, expired: 0, refunded: 0 };
     let totalRevenueUSD = 0;
     statusCounts.forEach(({ _id, count, totalRevenueUSD: revenue }) => {
       if (_id in stats) stats[_id] = count;
@@ -91,10 +97,9 @@ exports.getOrderStats = asyncHandler(async (req, res) => {
 exports.markRefunded = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) throw new AppError("Order not found.", 404);
-  if (order.status !== "paid") throw new AppError("Only paid orders can be marked as refunded.", 400);
+  if (!["paid", "completed"].includes(order.status)) throw new AppError("Only completed orders can be marked as refunded.", 400);
 
-  order.status = "refunded";
-  await order.save();
+  await orderService.transitionOrder({ order, status: "refunded", actor: req.user, req, reason: req.body.reason || "" });
 
   let revokedLicense = null;
   if (order.licenseId) {
@@ -109,7 +114,7 @@ exports.markRefunded = asyncHandler(async (req, res) => {
   }
 
   await writeAuditLog({
-    actor: req.user, action: "order.marked_refunded",
+    actor: req.user, action: "order.refunded",
     targetType: "Order", targetId: order._id,
     metadata: { orderId: order._id.toString(), reason: req.body.reason || "", licenseRevoked: !!revokedLicense },
     ip: req.ip,
@@ -122,4 +127,43 @@ exports.markRefunded = asyncHandler(async (req, res) => {
       : "Order marked as refunded.",
     data: order,
   });
+});
+
+exports.changeStatus = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) throw new AppError("Order not found.", 404);
+  const updated = await orderService.transitionOrder({
+    order,
+    status: req.body.status,
+    actor: req.user,
+    req,
+    reason: req.body.reason || "",
+  });
+  res.json({ success: true, message: "Order status updated.", data: updated });
+});
+
+exports.completeOrder = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) throw new AppError("Order not found.", 404);
+  const updated = await orderService.transitionOrder({
+    order,
+    status: "completed",
+    actor: req.user,
+    req,
+    reason: req.body.reason || "manual_completion",
+  });
+  res.json({ success: true, message: "Order completed.", data: updated });
+});
+
+exports.cancelOrder = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) throw new AppError("Order not found.", 404);
+  const updated = await orderService.transitionOrder({
+    order,
+    status: "cancelled",
+    actor: req.user,
+    req,
+    reason: req.body.reason || "manual_cancellation",
+  });
+  res.json({ success: true, message: "Order cancelled.", data: updated });
 });

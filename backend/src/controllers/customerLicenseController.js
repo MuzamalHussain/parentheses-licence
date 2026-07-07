@@ -1,11 +1,14 @@
 const asyncHandler = require("express-async-handler");
 const License = require("../models/License");
 const LicenseActivation = require("../models/LicenseActivation");
+const LicenseSite = require("../models/LicenseSite");
 const { AppError } = require("../utils/errorHandler");
 const { normalizeDomain, isValidDomain } = require("../utils/domain");
 const { writeAuditLog } = require("../utils/auditLog");
 const { getPagination, paginationMeta } = require("../utils/pagination");
 const performanceConfig = require("../config/performance");
+const lifecycle = require("../services/licenseLifecycleService");
+const siteActivation = require("../services/siteActivationService");
 
 const populateLicense = (query) =>
   query
@@ -28,7 +31,7 @@ exports.getMyLicenses = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    data: licenses,
+    data: licenses.map(lifecycle.attachLifecycleSummary),
     pagination: paginationMeta({ page, limit, total }),
   });
 });
@@ -39,7 +42,7 @@ exports.getMyLicense = asyncHandler(async (req, res) => {
     License.findOne({ _id: req.params.id, userId: req.user._id })
   );
   if (!license) throw new AppError("License not found.", 404);
-  res.json({ success: true, data: license });
+  res.json({ success: true, data: lifecycle.attachLifecycleSummary(license) });
 });
 
 // GET /api/v1/licenses/:id/activation-history
@@ -56,6 +59,26 @@ exports.getActivationHistory = asyncHandler(async (req, res) => {
   res.json({ success: true, data: history });
 });
 
+// GET /api/v1/licenses/:id/sites
+exports.getMySites = asyncHandler(async (req, res) => {
+  const license = await License.exists({ _id: req.params.id, userId: req.user._id });
+  if (!license) throw new AppError("License not found.", 404);
+  const { page, limit, skip } = getPagination(req.query, {
+    maxLimit: performanceConfig.pagination.customerMaxLimit,
+  });
+
+  const [sites, total] = await Promise.all([
+    LicenseSite.find({ licenseId: req.params.id })
+      .sort({ lastContactAt: -1, activatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    LicenseSite.countDocuments({ licenseId: req.params.id }),
+  ]);
+
+  res.json({ success: true, data: sites, pagination: paginationMeta({ page, limit, total }) });
+});
+
 // POST /api/v1/licenses/:id/deactivate-domain — customer self-service
 exports.deactivateDomain = asyncHandler(async (req, res) => {
   const { domain } = req.body;
@@ -63,7 +86,7 @@ exports.deactivateDomain = asyncHandler(async (req, res) => {
 
   const license = await License.findOne({ _id: req.params.id, userId: req.user._id });
   if (!license) throw new AppError("License not found.", 404);
-  if (license.status !== "active") throw new AppError("Only active licenses can be modified.", 400);
+  if (!lifecycle.entitlementSummary(license).canActivate) throw new AppError("Only activation-eligible licenses can be modified.", 400);
 
   const domainLower = normalizeDomain(domain);
   if (!isValidDomain(domainLower)) throw new AppError("Invalid domain format.", 422);
@@ -75,13 +98,13 @@ exports.deactivateDomain = asyncHandler(async (req, res) => {
   );
   if (!updatedLicense) throw new AppError("Domain is not activated on this license.", 404);
 
-  await LicenseActivation.create({
+  await siteActivation.deactivateSite({ license: updatedLicense, domain: domainLower, actor: req.user, actorRole: "customer", req }).catch(async () => LicenseActivation.create({
     licenseId: updatedLicense._id,
     domain: domainLower,
     action: "deactivate",
     actorId: req.user._id,
     actorRole: "customer",
-  });
+  }));
 
   await writeAuditLog({
     actor: req.user,
@@ -92,7 +115,18 @@ exports.deactivateDomain = asyncHandler(async (req, res) => {
     ip: req.ip,
   });
 
-  res.json({ success: true, message: "Domain deactivated. Slot is now free.", data: updatedLicense });
+  res.json({ success: true, message: "Domain deactivated. Slot is now free.", data: lifecycle.attachLifecycleSummary(updatedLicense) });
+});
+
+// POST /api/v1/licenses/:id/rename-site
+exports.renameSite = asyncHandler(async (req, res) => {
+  const { domain, siteName } = req.body;
+  if (!domain) throw new AppError("Domain is required.", 422);
+  if (!siteName) throw new AppError("Site name is required.", 422);
+  const license = await License.findOne({ _id: req.params.id, userId: req.user._id });
+  if (!license) throw new AppError("License not found.", 404);
+  const site = await siteActivation.renameSite({ license, domain, siteName, actor: req.user, actorRole: "customer", req });
+  res.json({ success: true, message: "Site renamed.", data: site });
 });
 
 // GET /api/v1/licenses/summary — stats for customer dashboard cards

@@ -1,4 +1,4 @@
-import { Users, Key, Package, AlertTriangle, Loader2 } from "lucide-react";
+import { Users, Key, Package, AlertTriangle, Loader2, DollarSign, ShoppingCart, Download, RefreshCw, Workflow } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAdminDashboard } from "../../hooks/useLicenses";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -15,6 +15,11 @@ function StatCard({ label, value, sub, icon: Icon, color, to }) {
     </div>
   );
   return to ? <Link to={to}>{inner}</Link> : inner;
+}
+
+function formatWidgetValue(widget) {
+  if (widget?.format === "currency") return `$${Number(widget.value || 0).toLocaleString()}`;
+  return Number(widget?.value || 0).toLocaleString();
 }
 
 function RecentLicenseRow({ license }) {
@@ -60,6 +65,15 @@ export default function AdminDashboard() {
   const d = data || {};
   const lic = d.licenses || {};
   const cust = d.customers || {};
+  const analytics = d.analytics || {};
+  const workflows = d.workflows || {};
+  const widgetIcons = { revenue: DollarSign, orders: ShoppingCart, downloads: Download, renewals: RefreshCw };
+  const widgetColors = {
+    revenue: "text-emerald-600 bg-emerald-50",
+    orders: "text-blue-600 bg-blue-50",
+    downloads: "text-indigo-600 bg-indigo-50",
+    renewals: "text-amber-600 bg-amber-50",
+  };
 
   return (
     <div className="space-y-6">
@@ -80,6 +94,36 @@ export default function AdminDashboard() {
         <StatCard label="Total Licenses" value={lic.total}
           icon={Package} color="text-purple-600 bg-purple-50" to="/admin/licenses" />
       </div>
+
+      {analytics.widgets?.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {analytics.widgets
+            .filter((widget) => ["revenue", "orders", "downloads", "renewals"].includes(widget.key))
+            .map((widget) => (
+              <StatCard
+                key={widget.key}
+                label={widget.label}
+                value={formatWidgetValue(widget)}
+                sub={analytics.filter?.period || "30d"}
+                icon={widgetIcons[widget.key] || Package}
+                color={widgetColors[widget.key] || "text-gray-600 bg-gray-100"}
+              />
+            ))}
+        </div>
+      )}
+
+      {d.workflows && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Pending Jobs" value={workflows.pending}
+            icon={Workflow} color="text-cyan-700 bg-cyan-50" to="/admin/workflows?status=queued" />
+          <StatCard label="Running Jobs" value={workflows.running}
+            icon={RefreshCw} color="text-sky-700 bg-sky-50" to="/admin/workflows?status=running" />
+          <StatCard label="Retry Queue" value={workflows.retryQueue}
+            icon={AlertTriangle} color="text-orange-700 bg-orange-50" to="/admin/workflows?status=retrying" />
+          <StatCard label="Failed Jobs" value={workflows.failed}
+            icon={AlertTriangle} color="text-red-700 bg-red-50" to="/admin/workflows?status=failed" />
+        </div>
+      )}
 
       {/* Two-column lower section */}
       <div className="grid lg:grid-cols-2 gap-6">

@@ -9,6 +9,12 @@ export const useCreateCheckout = () =>
     onError: (err) => toast.error(err.response?.data?.message || "Could not start checkout."),
   });
 
+export const useCreateCheckoutSession = () =>
+  useMutation({
+    mutationFn: (payload) => api.post("/orders/checkout/session", payload).then((r) => r.data),
+    onError: (err) => toast.error(err.response?.data?.message || "Could not create checkout session."),
+  });
+
 export const useMyOrders = (params = {}) =>
   useQuery({
     queryKey: ["my-orders", params],
@@ -22,6 +28,15 @@ export const useMyOrder = (id, opts = {}) =>
     queryFn: () => api.get(`/orders/${id}`).then((r) => r.data.data),
     enabled: !!id,
     ...opts,
+  });
+
+export const useRetryPayment = () =>
+  useMutation({
+    mutationFn: (id) => api.post(`/orders/${id}/retry-payment`).then((r) => r.data.data),
+    onSuccess: (data) => {
+      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Could not retry payment."),
   });
 
 // ── Admin: Orders ──────────────────────────────────────────────────────────────
@@ -57,5 +72,22 @@ export const useMarkRefunded = () => {
       qc.invalidateQueries({ queryKey: ["admin-licenses"] });
     },
     onError: (err) => toast.error(err.response?.data?.message || "Refund failed."),
+  });
+};
+
+export const useAdminOrderAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, status, reason }) => {
+      const url = action === "status" ? `/admin/orders/${id}/status` : `/admin/orders/${id}/${action}`;
+      return api.post(url, { status, reason }).then((r) => r.data);
+    },
+    onSuccess: () => {
+      toast.success("Order updated.");
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      qc.invalidateQueries({ queryKey: ["admin-order-stats"] });
+      qc.invalidateQueries({ queryKey: ["admin-licenses"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Order update failed."),
   });
 };

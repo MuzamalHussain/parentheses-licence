@@ -1,3 +1,5 @@
+const { domainToASCII } = require("url");
+
 /**
  * Normalizes a domain string for consistent storage and comparison.
  *
@@ -23,12 +25,17 @@ function normalizeDomain(raw, { stripWww = false } = {}) {
 
   // Remove path (everything after first /)
   domain = domain.split("/")[0];
+  domain = domain.replace(/\.$/, "");
 
   // Remove standard ports
   domain = domain.replace(/:80$/, "").replace(/:443$/, "");
 
   // Optionally strip www.
   if (stripWww) domain = domain.replace(/^www\./, "");
+
+  const [host, port] = domain.split(":");
+  const asciiHost = domainToASCII(host) || host;
+  domain = port ? `${asciiHost}:${port}` : asciiHost;
 
   return domain;
 }

@@ -113,19 +113,26 @@ app.use("/api/v1/products",            require("./routes/products"));
 app.use("/api/v1/admin/users",         require("./routes/adminUsers"));
 app.use("/api/v1/admin/licenses",      require("./routes/adminLicenses"));
 app.use("/api/v1/admin/dashboard",     require("./routes/adminDashboard"));
+app.use("/api/v1/admin/analytics",     require("./routes/adminAnalytics"));
+app.use("/api/v1/admin/workflows",     require("./routes/adminWorkflows"));
 app.use("/api/v1/admin/domains",       require("./routes/adminDomains"));
 app.use("/api/v1/admin/products/:productId/versions", require("./routes/adminVersions"));
 app.use("/api/v1/admin/orders",        require("./routes/adminOrders"));
+app.use("/api/v1/admin/payments",      require("./routes/adminPayments"));
 app.use("/api/v1/admin/coupons",       require("./routes/adminCoupons"));
 app.use("/api/v1/admin/support",       require("./routes/adminSupport"));
 app.use("/api/v1/admin/audit",         require("./routes/adminAudit"));
+app.use("/api/v1/admin/downloads",     require("./routes/adminDownloads"));
+app.use("/api/v1/admin/notifications", require("./routes/adminNotifications"));
 app.use("/api/v1/admin/settings",      require("./routes/adminSettings"));
 app.use("/api/v1/admin/diagnostics",   require("./routes/adminDiagnostics"));
+app.use("/api/v1/admin/operations",    require("./routes/adminOperations"));
 app.use("/api/v1/licenses",            require("./routes/customerLicenses"));
 app.use("/api/v1/plugin",              require("./routes/plugin"));
 app.use("/api/wp/updater",             require("./routes/wpUpdater"));
 app.use("/api/v1",                     require("./routes/customerDownloads"));
 app.use("/api/v1/orders",              require("./routes/orders"));
+app.use("/api/v1/notifications",       require("./routes/notifications"));
 app.use("/api/v1/support",             require("./routes/support"));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────

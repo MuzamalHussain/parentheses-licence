@@ -20,6 +20,17 @@ const planSchema = new mongoose.Schema(
       min: [0, "Allowed sites cannot be negative"],
       // 0 = unlimited, by convention
     },
+    planType: {
+      type: String,
+      enum: ["single_site", "3_sites", "5_sites", "10_sites", "agency", "unlimited", "lifetime", "trial", "custom"],
+      default: "single_site",
+      index: true,
+    },
+    upgradeRank: {
+      type: Number,
+      default: 1,
+      min: 0,
+    },
     priceUSD: {
       type: Number,
       required: [true, "USD price is required"],
@@ -51,5 +62,6 @@ const planSchema = new mongoose.Schema(
 
 planSchema.index({ productId: 1 });
 planSchema.index({ productId: 1, isActive: 1 });
+planSchema.index({ productId: 1, planType: 1, isActive: 1 });
 
 module.exports = mongoose.model("Plan", planSchema);

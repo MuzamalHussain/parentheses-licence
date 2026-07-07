@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings } from "lucide-react";
+import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
@@ -15,6 +15,8 @@ const navItems = [
   { to: "/admin/coupons", icon: Tag, label: "Coupons" },
   { to: "/admin/support", icon: Ticket, label: "Support" },
   { to: "/admin/audit", icon: FileText, label: "Audit Log" },
+  { to: "/admin/workflows", icon: Workflow, label: "Automation", roles: ["admin"] },
+  { to: "/admin/operations", icon: Activity, label: "Operations", roles: ["admin"] },
   { to: "/admin/settings", icon: Settings, label: "Settings", roles: ["admin"] },
 ];
 

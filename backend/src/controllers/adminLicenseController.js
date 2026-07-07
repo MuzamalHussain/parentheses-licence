@@ -3,12 +3,15 @@ const License = require("../models/License");
 const Plan = require("../models/Plan");
 const User = require("../models/User");
 const Product = require("../models/Product");
+const LicenseSite = require("../models/LicenseSite");
 const { generateUniqueLicenseKey } = require("../utils/licenseKey");
 const { writeAuditLog } = require("../utils/auditLog");
 const { AppError } = require("../utils/errorHandler");
 const { getPagination, paginationMeta } = require("../utils/pagination");
 const { getCached } = require("../utils/ttlCache");
 const performanceConfig = require("../config/performance");
+const lifecycle = require("../services/licenseLifecycleService");
+const siteActivation = require("../services/siteActivationService");
 
 // ─── Helper: populate license with product/plan/user ────────────────────────
 const populateLicense = (query) =>
@@ -38,7 +41,7 @@ exports.getLicenses = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    data: licenses,
+      data: licenses.map(lifecycle.attachLifecycleSummary),
     pagination: paginationMeta({ page, limit, total }),
   });
 });
@@ -47,12 +50,27 @@ exports.getLicenses = asyncHandler(async (req, res) => {
 exports.getLicense = asyncHandler(async (req, res) => {
   const license = await populateLicense(License.findById(req.params.id));
   if (!license) throw new AppError("License not found.", 404);
-  res.json({ success: true, data: license });
+  res.json({ success: true, data: lifecycle.attachLifecycleSummary(license) });
+});
+
+exports.getLicenseSites = asyncHandler(async (req, res) => {
+  const license = await License.findById(req.params.id).select("_id");
+  if (!license) throw new AppError("License not found.", 404);
+  const { page, limit, skip } = getPagination(req.query);
+  const [sites, total] = await Promise.all([
+    LicenseSite.find({ licenseId: req.params.id })
+      .sort({ lastContactAt: -1, activatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    LicenseSite.countDocuments({ licenseId: req.params.id }),
+  ]);
+  res.json({ success: true, data: sites, pagination: paginationMeta({ page, limit, total }) });
 });
 
 // ─── POST /api/v1/admin/licenses ────────────────────────────────────────────
 exports.createLicense = asyncHandler(async (req, res) => {
-  const { userId, productId, planId, expiresAt, allowedSitesOverride, notes } = req.body;
+  const { userId, productId, planId, expiresAt, allowedSitesOverride, notes, status, licenseType, entitlements } = req.body;
 
   // Validate user
   const user = await User.findById(userId);
@@ -86,6 +104,9 @@ exports.createLicense = asyncHandler(async (req, res) => {
         planId,
         allowedSites,
         expiresAt: computedExpiry,
+        status: status || "active",
+        licenseType: licenseType || (allowedSites === 0 ? "unlimited" : "single_site"),
+        entitlements: entitlements || undefined,
         notes: notes || "",
       });
       break;
@@ -104,12 +125,12 @@ exports.createLicense = asyncHandler(async (req, res) => {
   });
 
   const populated = await populateLicense(License.findById(license._id));
-  res.status(201).json({ success: true, message: "License created.", data: populated });
+  res.status(201).json({ success: true, message: "License created.", data: lifecycle.attachLifecycleSummary(populated) });
 });
 
 // ─── PATCH /api/v1/admin/licenses/:id ───────────────────────────────────────
 exports.updateLicense = asyncHandler(async (req, res) => {
-  const allowed = ["expiresAt", "allowedSites", "notes"];
+  const allowed = ["expiresAt", "allowedSites", "notes", "status", "licenseType", "entitlements", "allowedReleaseChannels", "downloadLimits", "renewal", "subscription"];
   const updates = {};
   allowed.forEach((k) => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
 
@@ -122,88 +143,130 @@ exports.updateLicense = asyncHandler(async (req, res) => {
     metadata: updates, ip: req.ip,
   });
 
-  res.json({ success: true, message: "License updated.", data: license });
+  res.json({ success: true, message: "License updated.", data: lifecycle.attachLifecycleSummary(license) });
 });
 
 // ─── POST /api/v1/admin/licenses/:id/suspend ────────────────────────────────
 exports.suspendLicense = asyncHandler(async (req, res) => {
   const license = await License.findById(req.params.id);
-  if (!license) throw new AppError("License not found.", 404);
-  if (license.status === "revoked") throw new AppError("Cannot suspend a revoked license.", 400);
-  if (license.status === "suspended") throw new AppError("License is already suspended.", 400);
-
-  license.status      = "suspended";
-  license.suspendedAt = new Date();
-  license.suspendedBy = req.user._id;
-  await license.save();
-
-  await writeAuditLog({
-    actor: req.user, action: "license.suspended",
-    targetType: "License", targetId: license._id,
-    metadata: { licenseKey: license.licenseKey, reason: req.body.reason || "" }, ip: req.ip,
-  });
-
-  res.json({ success: true, message: "License suspended.", data: license });
+  const updated = await lifecycle.transitionLicense({ license, action: "suspend", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License suspended.", data: lifecycle.attachLifecycleSummary(updated) });
 });
 
 // ─── POST /api/v1/admin/licenses/:id/reinstate ──────────────────────────────
 exports.reinstateLicense = asyncHandler(async (req, res) => {
   const license = await License.findById(req.params.id);
-  if (!license) throw new AppError("License not found.", 404);
-  if (license.status === "revoked") throw new AppError("Cannot reinstate a revoked license.", 400);
-  if (license.status === "active")  throw new AppError("License is already active.", 400);
-
-  license.status      = "active";
-  license.suspendedAt = null;
-  license.suspendedBy = null;
-  await license.save();
-
-  await writeAuditLog({
-    actor: req.user, action: "license.reinstated",
-    targetType: "License", targetId: license._id,
-    metadata: { licenseKey: license.licenseKey }, ip: req.ip,
-  });
-
-  res.json({ success: true, message: "License reinstated.", data: license });
+  const updated = await lifecycle.transitionLicense({ license, action: "reinstate", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License reinstated.", data: lifecycle.attachLifecycleSummary(updated) });
 });
 
 // ─── POST /api/v1/admin/licenses/:id/revoke ─────────────────────────────────
 exports.revokeLicense = asyncHandler(async (req, res) => {
   const license = await License.findById(req.params.id);
-  if (!license) throw new AppError("License not found.", 404);
-  if (license.status === "revoked") throw new AppError("License is already revoked.", 400);
-
-  license.status    = "revoked";
-  license.revokedAt = new Date();
-  license.revokedBy = req.user._id;
-  await license.save();
-
-  await writeAuditLog({
-    actor: req.user, action: "license.revoked",
-    targetType: "License", targetId: license._id,
-    metadata: { licenseKey: license.licenseKey, reason: req.body.reason || "" }, ip: req.ip,
-  });
-
-  res.json({ success: true, message: "License revoked.", data: license });
+  const updated = await lifecycle.transitionLicense({ license, action: "revoke", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License revoked.", data: lifecycle.attachLifecycleSummary(updated) });
 });
 
 // ─── POST /api/v1/admin/licenses/:id/reset-activations ──────────────────────
 exports.resetActivations = asyncHandler(async (req, res) => {
   const license = await License.findById(req.params.id);
   if (!license) throw new AppError("License not found.", 404);
+  const count = license.activeDomains.length;
+  const updated = await lifecycle.resetActivations({ license, actor: req.user, req });
+  res.json({ success: true, message: `Activations reset. ${count} domain(s) cleared.`, data: lifecycle.attachLifecycleSummary(updated) });
+});
 
-  const previousDomains = [...license.activeDomains];
-  license.activeDomains = [];
-  await license.save();
+exports.activateLicense = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transitionLicense({ license: await License.findById(req.params.id), action: "activate", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License activated.", data: lifecycle.attachLifecycleSummary(updated) });
+});
 
-  await writeAuditLog({
-    actor: req.user, action: "license.activations_reset",
-    targetType: "License", targetId: license._id,
-    metadata: { licenseKey: license.licenseKey, clearedDomains: previousDomains.map((d) => d.domain) },
-    ip: req.ip,
+exports.expireLicense = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transitionLicense({ license: await License.findById(req.params.id), action: "expire", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License expired.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.cancelLicense = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transitionLicense({ license: await License.findById(req.params.id), action: "cancel", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License cancelled.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.convertTrial = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transitionLicense({ license: await License.findById(req.params.id), action: "convert_trial", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "Trial converted.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.convertLifetime = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transitionLicense({ license: await License.findById(req.params.id), action: "convert_lifetime", actor: req.user, req, payload: req.body });
+  res.json({ success: true, message: "License converted to lifetime.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.renewLicense = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.renewLicense({ license: await License.findById(req.params.id), actor: req.user, req, ...req.body });
+  res.json({ success: true, message: "License renewed.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.transferLicense = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transferLicense({ license: await License.findById(req.params.id), toUserId: req.body.toUserId, actor: req.user, req, note: req.body.note || "" });
+  res.json({ success: true, message: "License transferred.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.changePlan = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.changePlan({ license: await License.findById(req.params.id), toPlanId: req.body.toPlanId, actor: req.user, req, changeType: req.body.changeType || "upgrade", note: req.body.note || "", reason: req.body.reason || "" });
+  res.json({ success: true, message: "License plan changed.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.subscriptionAction = asyncHandler(async (req, res) => {
+  const updated = await lifecycle.transitionSubscription({
+    license: await License.findById(req.params.id),
+    action: req.body.action,
+    actor: req.user,
+    req,
+    reason: req.body.reason || "",
   });
+  res.json({ success: true, message: "Subscription updated.", data: lifecycle.attachLifecycleSummary(updated) });
+});
 
-  res.json({ success: true, message: `Activations reset. ${previousDomains.length} domain(s) cleared.`, data: license });
+exports.extendExpiration = asyncHandler(async (req, res) => {
+  const license = await License.findById(req.params.id);
+  if (!license) throw new AppError("License not found.", 404);
+  license.expiresAt = req.body.expiresAt ? new Date(req.body.expiresAt) : new Date(Date.now() + Number(req.body.days || 365) * 24 * 60 * 60 * 1000);
+  if (license.status === "expired") license.status = "active";
+  license.renewal = { ...(license.renewal || {}), nextRenewalAt: license.expiresAt };
+  license.subscription = { ...(license.subscription || {}), renewalDate: license.expiresAt };
+  await license.save();
+  await writeAuditLog({ actor: req.user, action: "license.expiration_extended", targetType: "License", targetId: license._id, metadata: { expiresAt: license.expiresAt }, ip: req.ip });
+  res.json({ success: true, message: "Expiration extended.", data: lifecycle.attachLifecycleSummary(license) });
+});
+
+exports.manualActivate = asyncHandler(async (req, res) => {
+  const license = await License.findById(req.params.id);
+  if (!license) throw new AppError("License not found.", 404);
+  await siteActivation.upsertSiteActivation({ license, input: req.body, actor: req.user, actorRole: "admin", req });
+  const updated = await License.findById(req.params.id);
+  res.json({ success: true, message: "Domain manually activated.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.forceDeactivate = asyncHandler(async (req, res) => {
+  const license = await License.findById(req.params.id);
+  if (!license) throw new AppError("License not found.", 404);
+  await siteActivation.deactivateSite({ license, domain: req.body.domain, actor: req.user, actorRole: "admin", req, force: true });
+  const updated = await License.findById(req.params.id);
+  res.json({ success: true, message: "Domain force deactivated.", data: lifecycle.attachLifecycleSummary(updated) });
+});
+
+exports.siteAction = asyncHandler(async (req, res) => {
+  const license = await License.findById(req.params.id);
+  if (!license) throw new AppError("License not found.", 404);
+  const site = await siteActivation.adminSiteAction({
+    license,
+    domain: req.body.domain,
+    action: req.body.action,
+    actor: req.user,
+    req,
+    siteName: req.body.siteName,
+  });
+  res.json({ success: true, message: "Site action completed.", data: site });
 });
 
 // ─── GET /api/v1/admin/licenses/stats ───────────────────────────────────────
@@ -220,7 +283,7 @@ exports.getLicenseStats = asyncHandler(async (req, res) => {
         .lean(),
     ]);
 
-    const stats = { active: 0, suspended: 0, revoked: 0, expired: 0, total: 0 };
+    const stats = { draft: 0, pending: 0, active: 0, suspended: 0, revoked: 0, expired: 0, cancelled: 0, trial: 0, lifetime: 0, total: 0 };
     statusCounts.forEach(({ _id, count }) => {
       if (_id in stats) stats[_id] = count;
       stats.total += count;

@@ -11,7 +11,7 @@ import api from "../../lib/api";
 import { Button, Input, FormField, Alert } from "../../components/ui";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Pagination from "../../components/ui/Pagination";
-import { useAdminLicenses, useAdminLicenseStats, useCreateLicense, useLicenseAction } from "../../hooks/useLicenses";
+import { useAdminLicenses, useAdminLicenseStats, useCreateLicense, useLicenseAction, useAdminLicenseSites } from "../../hooks/useLicenses";
 
 // ── Copy Key Button ────────────────────────────────────────────────────────────
 function CopyKey({ licenseKey }) {
@@ -192,6 +192,7 @@ function LicenseRow({ license }) {
   const [expanded, setExpanded] = useState(false);
   const [confirm, setConfirm]   = useState(null); // { action, title, message, confirmLabel, confirmClass }
   const action = useLicenseAction();
+  const { data: sites = [] } = useAdminLicenseSites(license._id, expanded);
 
   const doAction = (a) =>
     action.mutate({ id: license._id, action: a }, { onSettled: () => setConfirm(null) });
@@ -236,7 +237,7 @@ function LicenseRow({ license }) {
           {/* Sites */}
           <div className="text-center hidden sm:block w-20 flex-shrink-0">
             <p className="text-sm font-medium text-gray-700">
-              {license.activeDomains?.length ?? 0}/{license.allowedSites === 0 ? "∞" : license.allowedSites}
+              {license.lifecycle?.usedActivations ?? license.activeDomains?.length ?? 0}/{license.allowedSites === 0 ? "∞" : license.allowedSites}
             </p>
             <p className="text-xs text-gray-400">sites</p>
           </div>
@@ -308,9 +309,51 @@ function LicenseRow({ license }) {
                 ))}
               </div>
             )}
+            {sites.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead className="text-gray-400 uppercase">
+                    <tr>
+                      <th className="text-left font-medium py-1 pr-3">Site</th>
+                      <th className="text-left font-medium py-1 pr-3">Env</th>
+                      <th className="text-left font-medium py-1 pr-3">Plugin</th>
+                      <th className="text-left font-medium py-1 pr-3">WP</th>
+                      <th className="text-left font-medium py-1 pr-3">PHP</th>
+                      <th className="text-left font-medium py-1 pr-3">Last Seen</th>
+                      <th className="text-left font-medium py-1">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sites.map((site) => (
+                      <tr key={site._id} className="border-t border-gray-100">
+                        <td className="py-1 pr-3 text-gray-700">{site.siteName || site.domain}</td>
+                        <td className="py-1 pr-3 text-gray-500">{site.environment}</td>
+                        <td className="py-1 pr-3 text-gray-500">{site.pluginVersion || "-"}</td>
+                        <td className="py-1 pr-3 text-gray-500">{site.wordpressVersion || "-"}</td>
+                        <td className="py-1 pr-3 text-gray-500">{site.phpVersion || "-"}</td>
+                        <td className="py-1 pr-3 text-gray-500">{site.lastContactAt ? new Date(site.lastContactAt).toLocaleString() : "-"}</td>
+                        <td className="py-1 text-gray-500">{site.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {license.notes && (
               <p className="text-xs text-gray-500 mt-3 italic">Note: {license.notes}</p>
             )}
+            <div className="flex flex-wrap gap-2 mt-3 text-xs text-gray-500">
+              <span>Type: {license.licenseType?.replace(/_/g, " ") || "single site"}</span>
+              <span>Download: {license.lifecycle?.canDownload ? "allowed" : "blocked"}</span>
+              <span>Update: {license.lifecycle?.canUpdate ? "allowed" : "blocked"}</span>
+              <span>Renewal: {license.lifecycle?.renewalEligible ? "eligible" : "not eligible"}</span>
+              <span>Upgrade: {license.lifecycle?.upgradeEligible ? "eligible" : "not eligible"}</span>
+              <span>Grace: {license.lifecycle?.gracePeriodDays ?? 0} days</span>
+              <span>Subscription: {license.subscription?.status || "none"}</span>
+              {(license.subscription?.renewalDate || license.renewal?.nextRenewalAt) && (
+                <span>Renewal date: {new Date(license.subscription?.renewalDate || license.renewal?.nextRenewalAt).toLocaleDateString()}</span>
+              )}
+            </div>
             <p className="text-xs text-gray-400 mt-2">
               Created {new Date(license.createdAt).toLocaleString()}
             </p>
@@ -360,6 +403,8 @@ export default function AdminLicenses() {
               { label: "Suspended", val: stats.stats.suspended, color: "bg-yellow-100 text-yellow-700" },
               { label: "Revoked",   val: stats.stats.revoked,   color: "bg-red-100 text-red-700" },
               { label: "Expired",   val: stats.stats.expired,   color: "bg-gray-100 text-gray-600" },
+              { label: "Trial",     val: stats.stats.trial,     color: "bg-blue-100 text-blue-700" },
+              { label: "Lifetime",  val: stats.stats.lifetime,  color: "bg-purple-100 text-purple-700" },
             ].map(({ label, val, color }) => (
               <button key={label}
                 onClick={() => { setStatus(status === label.toLowerCase() ? "" : label.toLowerCase()); setPage(1); }}

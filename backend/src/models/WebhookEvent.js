@@ -8,7 +8,7 @@ const webhookEventSchema = new mongoose.Schema(
   {
     gateway: {
       type: String,
-      enum: ["stripe", "local"],
+      enum: ["stripe", "local", "paypal", "lemon_squeezy", "paddle", "manual"],
       required: true,
     },
     // The gateway's own unique event ID (Stripe: evt_xxx). For gateways

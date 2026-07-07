@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { Download, Package, Loader2, Clock, FileText, ChevronDown, CheckCircle2 } from "lucide-react";
+import { Download, Package, Loader2, Clock, FileText, ChevronDown, CheckCircle2, Hash } from "lucide-react";
 import toast from "react-hot-toast";
 import { useMyLicenses } from "../../hooks/useLicenses";
 import { useProductVersions, useRequestDownload, useMyDownloadHistory } from "../../hooks/useVersions";
 import Pagination from "../../components/ui/Pagination";
+
+function formatChannel(value = "stable") {
+  return value.replace(/_/g, " ");
+}
 
 function ProductDownloadCard({ license }) {
   const [expanded, setExpanded] = useState(false);
@@ -17,7 +21,7 @@ function ProductDownloadCard({ license }) {
       window.location.href = `${apiBase}${res.data.downloadUrl}`;
       toast.success(`Downloading v${res.data.version.versionNumber}...`);
     } catch {
-      // error toast handled by hook
+      // Error toast handled by hook.
     }
   };
 
@@ -50,7 +54,7 @@ function ProductDownloadCard({ license }) {
               <div>
                 <p className="text-sm font-semibold text-gray-800">Latest: v{latest.versionNumber}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Released {latest.releasedAt ? new Date(latest.releasedAt).toLocaleDateString() : "—"}
+                  {formatChannel(latest.releaseChannel)} - Released {latest.releaseDate || latest.releasedAt ? new Date(latest.releaseDate || latest.releasedAt).toLocaleDateString() : "-"}
                 </p>
               </div>
               <Button
@@ -72,6 +76,19 @@ function ProductDownloadCard({ license }) {
             {latest.changelog && (
               <p className="text-sm text-gray-500 mt-3 whitespace-pre-wrap">{latest.changelog}</p>
             )}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-400">
+              {latest.checksum && (
+                <span className="flex items-center gap-1 font-mono" title={latest.checksum}>
+                  <Hash className="w-3 h-3" /> SHA256 {latest.checksum.slice(0, 12)}...
+                </span>
+              )}
+              {latest.checksumMd5 && <span className="font-mono" title={latest.checksumMd5}>MD5 {latest.checksumMd5.slice(0, 10)}...</span>}
+              {latest.releaseNotes && (
+                <a className="text-brand-600 hover:underline" href={`data:text/plain;charset=utf-8,${encodeURIComponent(latest.releaseNotes)}`} download={`release-notes-${latest.versionNumber}.txt`}>
+                  Release Notes
+                </a>
+              )}
+            </div>
           </div>
         )}
 
@@ -90,9 +107,11 @@ function ProductDownloadCard({ license }) {
             <div key={v._id} className="flex items-center justify-between">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-700">
-                  v{v.versionNumber} {v.isPublished && <span className="text-xs text-green-600">(current)</span>}
+                  v{v.versionNumber} <span className="text-xs text-gray-400">{formatChannel(v.releaseChannel)}</span> {v.isPublished && <span className="text-xs text-green-600">(current)</span>}
                 </p>
-                {v.changelog && <p className="text-xs text-gray-400 truncate max-w-md">{v.changelog}</p>}
+                <p className="text-xs text-gray-400 truncate max-w-md">
+                  {v.checksum ? `SHA256 ${v.checksum.slice(0, 12)}...` : v.changelog || "No checksum available"}
+                </p>
               </div>
               <button
                 onClick={() => handleDownload(v._id)}
@@ -145,10 +164,12 @@ function DownloadHistorySection() {
                   <FileText className="w-4 h-4 text-gray-300 flex-shrink-0" />
                   <div>
                     <p className="text-sm text-gray-700">
-                      v{d.pluginVersionId?.versionNumber || "—"}{" "}
+                      v{d.pluginVersionId?.versionNumber || "-"}{" "}
                       <span className="text-gray-400 font-mono text-xs">({d.licenseId?.licenseKey})</span>
                     </p>
-                    <p className="text-xs text-gray-400">{new Date(d.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-gray-400">
+                      {d.productId?.name || "Product"} - {formatChannel(d.releaseChannel || d.pluginVersionId?.releaseChannel)} - {new Date(d.usedAt || d.createdAt).toLocaleString()}
+                    </p>
                   </div>
                 </div>
                 {d.usedAt ? (
@@ -174,12 +195,11 @@ export default function DownloadsPage() {
   const { data: licData, isLoading } = useMyLicenses({ limit: 50 });
   const licenses = licData?.data || [];
 
-  // Show one card per unique product (avoid duplicate cards if customer has multiple licenses for same product)
   const seen = new Set();
-  const uniqueProductLicenses = licenses.filter((l) => {
-    const pid = l.productId?._id;
-    if (!pid || seen.has(pid)) return false;
-    seen.add(pid);
+  const uniqueProductLicenses = licenses.filter((license) => {
+    const productId = license.productId?._id;
+    if (!productId || seen.has(productId)) return false;
+    seen.add(productId);
     return true;
   });
 
@@ -202,7 +222,7 @@ export default function DownloadsPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {uniqueProductLicenses.map((l) => <ProductDownloadCard key={l._id} license={l} />)}
+          {uniqueProductLicenses.map((license) => <ProductDownloadCard key={license._id} license={license} />)}
         </div>
       )}
 

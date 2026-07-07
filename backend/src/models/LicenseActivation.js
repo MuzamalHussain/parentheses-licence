@@ -10,7 +10,7 @@ const licenseActivationSchema = new mongoose.Schema(
       index: true,
     },
     domain:  { type: String, required: true, lowercase: true, trim: true },
-    action:  { type: String, enum: ["activate", "deactivate"], required: true },
+    action:  { type: String, enum: ["activate", "deactivate", "force_deactivate", "manual_activate", "reset"], required: true },
     actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     actorRole: { type: String, default: "plugin" }, // "plugin" | "customer" | "admin"
     ipAddress: { type: String, default: "" },

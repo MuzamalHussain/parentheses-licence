@@ -54,6 +54,23 @@ const pluginVersionSchema = new mongoose.Schema(
       default: "",
       match: [/^[a-fA-F0-9]{32}$|^$/, "MD5 checksum must be 32 hex characters"],
     },
+    assets: {
+      type: [{
+        type: {
+          type: String,
+          enum: ["plugin_zip", "documentation_pdf", "release_notes", "checksum", "developer_package"],
+          default: "plugin_zip",
+        },
+        storageProvider: { type: String, default: "local" },
+        path: { type: String, default: "" },
+        fileName: { type: String, default: "" },
+        contentType: { type: String, default: "" },
+        fileSizeBytes: { type: Number, default: 0 },
+        checksumSha256: { type: String, default: "" },
+        checksumMd5: { type: String, default: "" },
+      }],
+      default: [],
+    },
     isPublished: {
       type: Boolean,
       default: false,
