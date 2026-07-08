@@ -34,6 +34,11 @@ import AdminSupport from "./pages/admin/AdminSupport";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminWorkflows from "./pages/admin/AdminWorkflows";
 import AdminOperations from "./pages/admin/AdminOperations";
+import AdminIntegrations from "./pages/admin/AdminIntegrations";
+import AdminApiKeys from "./pages/admin/AdminApiKeys";
+import AdminWebhooks from "./pages/admin/AdminWebhooks";
+import AdminReleaseAutomation from "./pages/admin/AdminReleaseAutomation";
+import AdminDeveloperPortal from "./pages/admin/AdminDeveloperPortal";
 import AdminSettings from "./pages/admin/AdminSettings";
 
 const queryClient = new QueryClient({
@@ -74,6 +79,11 @@ export default function App() {
                 <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
                 <Route path="/admin/workflows" element={<AdminWorkflows />} />
                 <Route path="/admin/operations" element={<AdminOperations />} />
+                <Route path="/admin/integrations" element={<AdminIntegrations />} />
+                <Route path="/admin/api-keys" element={<AdminApiKeys />} />
+                <Route path="/admin/webhooks" element={<AdminWebhooks />} />
+                <Route path="/admin/release-automation" element={<AdminReleaseAutomation />} />
+                <Route path="/admin/developer-portal" element={<AdminDeveloperPortal />} />
               </Route>
             </Route>
 

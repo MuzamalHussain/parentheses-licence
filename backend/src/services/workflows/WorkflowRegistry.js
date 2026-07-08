@@ -9,6 +9,18 @@ function noopHandler(label) {
   });
 }
 
+function webhookDispatchHandler() {
+  return async (context) => {
+    const WebhookManager = require("../webhooks/WebhookManager");
+    return WebhookManager.dispatcher.dispatch(context.eventName, context.payload, {
+      actor: context.actor,
+      requestId: context.requestId,
+      ip: context.ip,
+      immediate: false,
+    });
+  };
+}
+
 class WorkflowRegistry {
   constructor() {
     this.workflows = new Map();
@@ -86,6 +98,30 @@ function registerDefaultWorkflows(registry) {
     ["audit.support.ticket.created", "SupportTicketCreated"],
     ["audit.version.released", "VersionReleased"],
   ].forEach(([name, eventName]) => registry.register({ name, eventName, handler: noopHandler(name) }));
+
+  [
+    "UserRegistered",
+    "UserUpdated",
+    "UserDeleted",
+    "OrderCreated",
+    "OrderCompleted",
+    "PaymentSucceeded",
+    "PaymentFailed",
+    "PaymentRefunded",
+    "LicenseCreated",
+    "LicenseActivated",
+    "LicenseDeactivated",
+    "LicenseRenewed",
+    "LicenseExpired",
+    "VersionReleased",
+    "DownloadCompleted",
+    "SupportTicketCreated",
+    "SupportTicketUpdated",
+  ].forEach((eventName) => registry.register({
+    name: `webhook.dispatch.${eventName}`,
+    eventName,
+    handler: webhookDispatchHandler(),
+  }));
 
   registry
     .registerRecurring({ name: "daily.license.expiring", eventName: "LicenseExpiring", frequency: "daily" })

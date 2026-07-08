@@ -92,3 +92,29 @@ export const useRequestDownload = () =>
       api.post("/downloads/request", { licenseId, pluginVersionId }).then((r) => r.data),
     onError: (err) => toast.error(err.response?.data?.message || "Could not start download."),
   });
+
+export const useReleaseAutomation = (params = {}) =>
+  useQuery({
+    queryKey: ["release-automation", params],
+    queryFn: () => api.get("/admin/release-automation", { params }).then((r) => r.data.data),
+    keepPreviousData: true,
+  });
+
+export const useReleaseAutomationAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, id, body = {} }) => {
+      if (type === "connect") return api.post("/admin/release-automation/repositories", body).then((r) => r.data);
+      if (type === "health") return api.post(`/admin/release-automation/repositories/${id}/health`).then((r) => r.data);
+      if (type === "import") return api.post(`/admin/release-automation/repositories/${id}/import`, body).then((r) => r.data);
+      if (type === "validate") return api.post(`/admin/release-automation/pipelines/${id}/validate`).then((r) => r.data);
+      if (type === "status") return api.patch(`/admin/release-automation/pipelines/${id}/status`, body).then((r) => r.data);
+      throw new Error("Unknown release automation action.");
+    },
+    onSuccess: () => {
+      toast.success("Release automation updated.");
+      qc.invalidateQueries({ queryKey: ["release-automation"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Release automation action failed."),
+  });
+};

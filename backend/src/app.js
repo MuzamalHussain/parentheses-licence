@@ -105,6 +105,7 @@ app.use(healthRoutes);
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 app.use("/api",                       require("./routes/apiVersions"));
+app.use("/api/public/v1",             require("./routes/publicApi"));
 app.use("/api/v1/admin",               makeRateLimiter("admin"));
 app.use("/api/v1/downloads",           makeRateLimiter("downloads"));
 app.use("/api/v1/auth",                require("./routes/auth"));
@@ -127,6 +128,11 @@ app.use("/api/v1/admin/notifications", require("./routes/adminNotifications"));
 app.use("/api/v1/admin/settings",      require("./routes/adminSettings"));
 app.use("/api/v1/admin/diagnostics",   require("./routes/adminDiagnostics"));
 app.use("/api/v1/admin/operations",    require("./routes/adminOperations"));
+app.use("/api/v1/admin/integrations",  require("./routes/adminIntegrations"));
+app.use("/api/v1/admin/api-keys",      require("./routes/adminApiKeys"));
+app.use("/api/v1/admin/webhooks",      require("./routes/adminWebhooks"));
+app.use("/api/v1/admin/release-automation", require("./routes/adminReleaseAutomation"));
+app.use("/api/v1/admin/developer-portal", require("./routes/adminDeveloperPortal"));
 app.use("/api/v1/licenses",            require("./routes/customerLicenses"));
 app.use("/api/v1/plugin",              require("./routes/plugin"));
 app.use("/api/wp/updater",             require("./routes/wpUpdater"));

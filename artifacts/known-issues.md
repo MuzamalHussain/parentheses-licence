@@ -1,6 +1,6 @@
 # Known Issues - Parentheses Licence 1.0.0
 
-Generated: 2026-07-07T12:39:04.099Z
+Generated: 2026-07-08T06:45:28.911Z
 
 - Local filesystem plugin ZIP storage requires persistent volume or external backup on ephemeral hosts.
 - Gateway refunds are recorded in-app, but issuing the external PSP/Stripe refund remains an operator action.

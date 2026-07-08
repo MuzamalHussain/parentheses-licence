@@ -53,7 +53,114 @@ export const useOperationsAction = () => {
   });
 };
 
+export const useAdminIntegrations = () =>
+  useQuery({
+    queryKey: ["admin-integrations"],
+    queryFn: () => api.get("/admin/integrations").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useIntegrationAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ providerId, action, body = {} }) =>
+      api.post(`/admin/integrations/${providerId}/${action}`, body).then((r) => r.data),
+    onSuccess: (_, { action }) => {
+      toast.success(action === "test" ? "Connection tested." : "Integration updated.");
+      qc.invalidateQueries({ queryKey: ["admin-integrations"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Integration action failed."),
+  });
+};
+
+export const useAdminApiKeys = () =>
+  useQuery({
+    queryKey: ["admin-api-keys"],
+    queryFn: () => api.get("/admin/api-keys").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useCreateApiKey = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.post("/admin/api-keys", body).then((r) => r.data),
+    onSuccess: () => {
+      toast.success("API key created.");
+      qc.invalidateQueries({ queryKey: ["admin-api-keys"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Could not create API key."),
+  });
+};
+
+export const useApiKeyAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }) => api.post(`/admin/api-keys/${id}/${action}`).then((r) => r.data),
+    onSuccess: (_, { action }) => {
+      toast.success(action === "rotate" ? "API key rotated." : "API key revoked.");
+      qc.invalidateQueries({ queryKey: ["admin-api-keys"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "API key action failed."),
+  });
+};
+
+export const useAdminWebhooks = (params = {}) =>
+  useQuery({
+    queryKey: ["admin-webhooks", params],
+    queryFn: () => api.get("/admin/webhooks", { params }).then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useCreateWebhook = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.post("/admin/webhooks", body).then((r) => r.data),
+    onSuccess: () => {
+      toast.success("Webhook created.");
+      qc.invalidateQueries({ queryKey: ["admin-webhooks"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Could not create webhook."),
+  });
+};
+
+export const useWebhookAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, body = {} }) => {
+      if (action === "retry") return api.post(`/admin/webhooks/deliveries/${id}/retry`, body).then((r) => r.data);
+      if (action === "delete") return api.delete(`/admin/webhooks/${id}`).then((r) => r.data);
+      return api.patch(`/admin/webhooks/${id}`, body).then((r) => r.data);
+    },
+    onSuccess: () => {
+      toast.success("Webhook updated.");
+      qc.invalidateQueries({ queryKey: ["admin-webhooks"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Webhook action failed."),
+  });
+};
+
 // ── Admin Licenses ────────────────────────────────────────────────────────────
+export const useDeveloperPortal = () =>
+  useQuery({
+    queryKey: ["developer-portal"],
+    queryFn: () => api.get("/admin/developer-portal").then((r) => r.data.data),
+    staleTime: 60_000,
+  });
+
+export const useDeveloperSearch = (q) =>
+  useQuery({
+    queryKey: ["developer-portal-search", q],
+    queryFn: () => api.get("/admin/developer-portal/search", { params: { q } }).then((r) => r.data.data),
+    enabled: Boolean(q),
+    staleTime: 30_000,
+  });
+
+export const useSandboxExecute = () =>
+  useMutation({
+    mutationFn: (body) => api.post("/admin/developer-portal/sandbox/execute", body).then((r) => r.data.data),
+    onError: (err) => toast.error(err.response?.data?.message || "Sandbox request failed."),
+  });
+
 export const useAdminLicenses = (params = {}) =>
   useQuery({
     queryKey: ["admin-licenses", params],

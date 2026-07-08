@@ -1,0 +1,16 @@
+{
+  "name": "@parentheses/licence-sdk",
+  "version": "0.1.0",
+  "description": "Official JavaScript and Node.js SDK foundation for the Parentheses Licence Public API.",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"require('./src') && console.log('SDK build verification passed.')\"",
+    "test": "node ../../backend/tests/phase12d-sdk-developer-libraries.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

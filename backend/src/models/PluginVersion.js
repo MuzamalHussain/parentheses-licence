@@ -102,6 +102,31 @@ const pluginVersionSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    sourceProvider: {
+      type: String,
+      enum: ["manual", "github", "gitlab", "azure_devops"],
+      default: "manual",
+      index: true,
+    },
+    sourceRepositoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReleaseRepository",
+      default: null,
+    },
+    sourceReleasePipelineId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReleasePipeline",
+      default: null,
+    },
+    buildMetadata: {
+      commitSha: { type: String, trim: true, default: "" },
+      branch: { type: String, trim: true, default: "" },
+      buildNumber: { type: String, trim: true, default: "" },
+      buildTimestamp: { type: Date, default: null },
+      githubReleaseId: { type: String, trim: true, default: "" },
+      githubAssetId: { type: String, trim: true, default: "" },
+      releaseTag: { type: String, trim: true, default: "" },
+    },
   },
   { timestamps: true }
 );
@@ -121,5 +146,6 @@ pluginVersionSchema.index({ productId: 1, isPublished: 1, createdAt: -1 });
 pluginVersionSchema.index({ productId: 1, releasedAt: -1, createdAt: -1 });
 pluginVersionSchema.index({ productId: 1, status: 1, releaseChannel: 1 });
 pluginVersionSchema.index({ productId: 1, isLatest: 1 });
+pluginVersionSchema.index({ sourceProvider: 1, "buildMetadata.releaseTag": 1 });
 
 module.exports = mongoose.model("PluginVersion", pluginVersionSchema);
