@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../lib/api";
 import { AUTH_SESSION_EXPIRED_EVENT, clearAuthSession } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import toast from "react-hot-toast";
 
 export const useProfile = () =>
   useQuery({
@@ -21,6 +22,78 @@ export const useUpdateProfile = () => {
       qc.setQueryData(["account-profile"], profile);
       qc.invalidateQueries({ queryKey: ["account-profile"] });
     },
+  });
+};
+
+export const useOrganizations = () =>
+  useQuery({
+    queryKey: ["organizations"],
+    queryFn: () => api.get("/organizations").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useOrganizationDashboard = (organizationId) =>
+  useQuery({
+    queryKey: ["organization-dashboard", organizationId],
+    queryFn: () => api.get(`/organizations/${organizationId}/dashboard`).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useOrganizationAction = () => {
+  const qc = useQueryClient();
+  const { updateUser } = useAuth();
+  return useMutation({
+    mutationFn: ({ action, organizationId, userId, invitationId, body = {} }) => {
+      if (action === "create") return api.post("/organizations", body).then((r) => r.data);
+      if (action === "switch") return api.post(`/organizations/${organizationId}/switch`).then((r) => r.data);
+      if (action === "settings") return api.patch(`/organizations/${organizationId}/settings`, body).then((r) => r.data);
+      if (action === "invite") return api.post(`/organizations/${organizationId}/invitations`, body).then((r) => r.data);
+      if (action === "resend" || action === "cancel") return api.post(`/organizations/${organizationId}/invitations/${invitationId}/${action}`).then((r) => r.data);
+      if (action === "role") return api.patch(`/organizations/${organizationId}/members/${userId}/role`, body).then((r) => r.data);
+      if (action === "suspend") return api.post(`/organizations/${organizationId}/members/${userId}/suspend`).then((r) => r.data);
+      if (action === "remove") return api.delete(`/organizations/${organizationId}/members/${userId}`).then((r) => r.data);
+      if (action === "transfer") return api.post(`/organizations/${organizationId}/transfer-ownership`, body).then((r) => r.data);
+      throw new Error("Unknown organization action.");
+    },
+    onSuccess: (result, vars) => {
+      toast.success("Organization updated.");
+      if (vars.action === "switch") updateUser({ activeOrganizationId: result.data.organization._id });
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      qc.invalidateQueries({ queryKey: ["organization-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Organization action failed."),
+  });
+};
+
+export const useOrganizationBrand = (organizationId) =>
+  useQuery({
+    queryKey: ["organization-brand", organizationId],
+    queryFn: () => api.get(`/brands/${organizationId}`).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const usePublicBrand = (organizationId) =>
+  useQuery({
+    queryKey: ["public-brand", organizationId],
+    queryFn: () => api.get("/brands/public", { params: { organizationId } }).then((r) => r.data.data),
+    staleTime: 60_000,
+  });
+
+export const useBrandAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, field, body = {} }) => {
+      if (action === "asset") return api.patch(`/brands/${organizationId}/assets/${field}`, body).then((r) => r.data);
+      if (action === "reset") return api.post(`/brands/${organizationId}/reset`).then((r) => r.data);
+      return api.patch(`/brands/${organizationId}`, body).then((r) => r.data);
+    },
+    onSuccess: (_, vars) => {
+      toast.success("Brand updated.");
+      qc.invalidateQueries({ queryKey: ["organization-brand", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Brand update failed."),
   });
 };
 

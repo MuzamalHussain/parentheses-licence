@@ -161,6 +161,97 @@ export const useSandboxExecute = () =>
     onError: (err) => toast.error(err.response?.data?.message || "Sandbox request failed."),
   });
 
+export const useAdminRbac = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-rbac", organizationId],
+    queryFn: () => api.get("/admin/rbac", { params: { organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useRbacAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, teamId, roleId, userId, body = {} }) => {
+      const payload = { ...body, organizationId };
+      if (action === "create-team") return api.post("/admin/rbac/teams", payload).then((r) => r.data);
+      if (action === "archive-team") return api.post(`/admin/rbac/teams/${teamId}/archive`, payload).then((r) => r.data);
+      if (action === "delete-team") return api.delete(`/admin/rbac/teams/${teamId}`, { data: payload }).then((r) => r.data);
+      if (action === "assign-team") return api.post(`/admin/rbac/teams/${teamId}/members`, payload).then((r) => r.data);
+      if (action === "remove-team") return api.delete(`/admin/rbac/teams/${teamId}/members/${userId}`, { data: payload }).then((r) => r.data);
+      if (action === "create-role") return api.post("/admin/rbac/roles", payload).then((r) => r.data);
+      if (action === "clone-role") return api.post(`/admin/rbac/roles/${roleId}/clone`, payload).then((r) => r.data);
+      if (action === "update-role") return api.patch(`/admin/rbac/roles/${roleId}`, payload).then((r) => r.data);
+      if (action === "archive-role") return api.post(`/admin/rbac/roles/${roleId}/archive`, payload).then((r) => r.data);
+      if (action === "delete-role") return api.delete(`/admin/rbac/roles/${roleId}`, { data: payload }).then((r) => r.data);
+      if (action === "assign-role") return api.post(`/admin/rbac/members/${userId}/roles`, payload).then((r) => r.data);
+      if (action === "remove-role") return api.delete(`/admin/rbac/members/${userId}/roles/${roleId}`, { data: payload }).then((r) => r.data);
+      throw new Error("Unknown RBAC action.");
+    },
+    onSuccess: (_, vars) => {
+      toast.success("RBAC updated.");
+      qc.invalidateQueries({ queryKey: ["admin-rbac", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "RBAC action failed."),
+  });
+};
+
+export const useAdminIdentity = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-identity", organizationId],
+    queryFn: () => api.get("/admin/identity", { params: { organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useIdentityAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, providerId, userId, sessionId, body = {} }) => {
+      const payload = { ...body, organizationId };
+      if (action === "policy") return api.patch("/admin/identity/policy", payload).then((r) => r.data);
+      if (action === "provider") return api.post("/admin/identity/providers", payload).then((r) => r.data);
+      if (action === "provider-status") return api.patch(`/admin/identity/providers/${providerId}/status`, payload).then((r) => r.data);
+      if (action === "provider-test") return api.post(`/admin/identity/providers/${providerId}/test`, payload).then((r) => r.data);
+      if (action === "revoke-session") return api.delete(`/admin/identity/sessions/${userId}/${sessionId}`, { data: payload }).then((r) => r.data);
+      throw new Error("Unknown identity action.");
+    },
+    onSuccess: (_, vars) => {
+      toast.success("Identity settings updated.");
+      qc.invalidateQueries({ queryKey: ["admin-identity", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Identity action failed."),
+  });
+};
+
+export const useAdminCompliance = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-compliance", organizationId],
+    queryFn: () => api.get("/admin/compliance", { params: { organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useComplianceAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, holdId, userId, body = {} }) => {
+      const payload = { ...body, organizationId };
+      if (action === "policy") return api.patch("/admin/compliance/policy", payload).then((r) => r.data);
+      if (action === "export") return api.post("/admin/compliance/exports", payload).then((r) => r.data);
+      if (action === "hold") return api.post("/admin/compliance/legal-holds", payload).then((r) => r.data);
+      if (action === "release-hold") return api.post(`/admin/compliance/legal-holds/${holdId}/release`, payload).then((r) => r.data);
+      if (action === "anonymize") return api.post(`/admin/compliance/users/${userId}/anonymize`, payload).then((r) => r.data);
+      throw new Error("Unknown compliance action.");
+    },
+    onSuccess: (_, vars) => {
+      toast.success("Compliance action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-compliance", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Compliance action failed."),
+  });
+};
+
 export const useAdminLicenses = (params = {}) =>
   useQuery({
     queryKey: ["admin-licenses", params],

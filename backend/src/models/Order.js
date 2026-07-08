@@ -143,6 +143,12 @@ const orderSchema = new mongoose.Schema(
       type: Date,
       default: () => new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h to complete payment
     },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -178,5 +184,7 @@ orderSchema.index({ status: 1, currency: 1 });
 orderSchema.index({ paymentStatus: 1, createdAt: -1 });
 orderSchema.index({ gateway: 1, gatewayCheckoutId: 1 });
 orderSchema.index({ status: 1, expiresAt: 1 }); // for the future auto-expire cron
+orderSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ organizationId: 1, userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", orderSchema);

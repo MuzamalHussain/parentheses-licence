@@ -114,6 +114,17 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    mfaRequiredAt: {
+      type: Date,
+    },
+    passwordChangedAt: {
+      type: Date,
+    },
+    passwordHistory: {
+      type: [String],
+      default: [],
+      select: false,
+    },
 
     isActive: {
       type: Boolean,
@@ -122,6 +133,12 @@ const userSchema = new mongoose.Schema(
 
     lastLoginAt: {
       type: Date,
+    },
+    activeOrganizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
     },
   },
   { timestamps: true }
@@ -147,6 +164,7 @@ userSchema.methods.toSafeJSON = function () {
     twoFactorEnabled: this.twoFactorEnabled,
     isActive: this.isActive,
     isSuspended: this.isSuspended,
+    activeOrganizationId: this.activeOrganizationId,
     createdAt: this.createdAt,
   };
   };

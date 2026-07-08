@@ -83,6 +83,12 @@ const downloadSchema = new mongoose.Schema(
     userAgent: { type: String, default: "" },
     browser: { type: String, default: "" },
     platform: { type: String, default: "" },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -94,5 +100,7 @@ downloadSchema.index({ licenseId: 1, status: 1, createdAt: -1 });
 downloadSchema.index({ pluginVersionId: 1, createdAt: -1 });
 downloadSchema.index({ productId: 1, createdAt: -1 });
 downloadSchema.index({ purpose: 1, usedAt: 1, expiresAt: 1 });
+downloadSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
+downloadSchema.index({ organizationId: 1, userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Download", downloadSchema);

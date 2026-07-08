@@ -20,6 +20,8 @@ import DownloadsPage from "./pages/portal/DownloadsPage";
 import OrdersPage from "./pages/portal/OrdersPage";
 import SupportPage from "./pages/portal/SupportPage";
 import ProfilePage from "./pages/portal/ProfilePage";
+import OrganizationsPage from "./pages/portal/OrganizationsPage";
+import BrandSettingsPage from "./pages/portal/BrandSettingsPage";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminProductsPage from "./pages/admin/AdminProductsPage";
@@ -39,6 +41,9 @@ import AdminApiKeys from "./pages/admin/AdminApiKeys";
 import AdminWebhooks from "./pages/admin/AdminWebhooks";
 import AdminReleaseAutomation from "./pages/admin/AdminReleaseAutomation";
 import AdminDeveloperPortal from "./pages/admin/AdminDeveloperPortal";
+import AdminRbac from "./pages/admin/AdminRbac";
+import AdminIdentity from "./pages/admin/AdminIdentity";
+import AdminCompliance from "./pages/admin/AdminCompliance";
 import AdminSettings from "./pages/admin/AdminSettings";
 
 const queryClient = new QueryClient({
@@ -69,6 +74,8 @@ export default function App() {
                 <Route path="/dashboard/downloads" element={<DownloadsPage />} />
                 <Route path="/dashboard/orders" element={<OrdersPage />} />
                 <Route path="/dashboard/support" element={<SupportPage />} />
+                <Route path="/dashboard/organizations" element={<OrganizationsPage />} />
+                <Route path="/dashboard/brand" element={<BrandSettingsPage />} />
                 <Route path="/dashboard/profile" element={<ProfilePage />} />
               </Route>
             </Route>
@@ -84,6 +91,9 @@ export default function App() {
                 <Route path="/admin/webhooks" element={<AdminWebhooks />} />
                 <Route path="/admin/release-automation" element={<AdminReleaseAutomation />} />
                 <Route path="/admin/developer-portal" element={<AdminDeveloperPortal />} />
+                <Route path="/admin/rbac" element={<AdminRbac />} />
+                <Route path="/admin/identity" element={<AdminIdentity />} />
+                <Route path="/admin/compliance" element={<AdminCompliance />} />
               </Route>
             </Route>
 

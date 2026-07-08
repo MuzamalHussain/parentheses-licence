@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Key, Download, ShoppingCart, HeadphonesIcon, LogOut, Menu, User, Package } from "lucide-react";
+import { LayoutDashboard, Key, Download, ShoppingCart, HeadphonesIcon, LogOut, Menu, User, Package, Building2, Paintbrush } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { usePublicBrand } from "../hooks/useAccount";
 import toast from "react-hot-toast";
 
 const navItems = [
@@ -11,11 +12,14 @@ const navItems = [
   { to: "/dashboard/downloads", icon: Download, label: "Downloads" },
   { to: "/dashboard/orders", icon: ShoppingCart, label: "Orders & Billing" },
   { to: "/dashboard/support", icon: HeadphonesIcon, label: "Support" },
+  { to: "/dashboard/organizations", icon: Building2, label: "Organizations" },
+  { to: "/dashboard/brand", icon: Paintbrush, label: "Brand Settings" },
   { to: "/dashboard/profile", icon: User, label: "Profile" },
 ];
 
 export default function PortalLayout() {
   const { user, logout } = useAuth();
+  const { data: brand } = usePublicBrand(user?.activeOrganizationId);
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -33,7 +37,7 @@ export default function PortalLayout() {
           <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">P</span>
           </div>
-          <span className="font-bold text-gray-900">Parentheses</span>
+          <span className="font-bold text-gray-900">{brand?.portal?.navigationLabel || brand?.identity?.displayName || "Parentheses"}</span>
         </div>
       </div>
 
@@ -105,7 +109,7 @@ export default function PortalLayout() {
           <button onClick={() => setSidebarOpen(true)} className="p-1.5 rounded-lg hover:bg-gray-100">
             <Menu className="w-5 h-5" />
           </button>
-          <span className="font-semibold text-gray-900">Parentheses</span>
+          <span className="font-semibold text-gray-900">{brand?.portal?.navigationLabel || brand?.identity?.displayName || "Parentheses"}</span>
         </div>
 
         <main className="flex-1 p-6">

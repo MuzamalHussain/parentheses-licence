@@ -9,6 +9,7 @@ const { getConfig } = require("../config/env");
 const { writeAuditLog } = require("../utils/auditLog");
 const { logWarn } = require("../utils/logger");
 const { getSessionClient } = require("../utils/sessionSecurity");
+const EnterpriseIdentityService = require("../services/identity/EnterpriseIdentityService");
 
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
@@ -152,6 +153,9 @@ exports.register = asyncHandler(async (req, res) => {
   const existing = await User.findOne({ email });
   if (existing) throw new AppError("An account with this email already exists.", 409);
 
+  const passwordPolicy = await EnterpriseIdentityService.resolvePolicy(null);
+  const passwordCheck = EnterpriseIdentityService.validatePassword(password, passwordPolicy.password);
+  if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
   const passwordHash = await bcrypt.hash(password, 12);
 
   // Email verification token
@@ -164,6 +168,7 @@ exports.register = asyncHandler(async (req, res) => {
     email,
     passwordHash,
     companyName: companyName || "",
+    passwordChangedAt: new Date(),
     emailVerificationToken: hashedToken,
     emailVerificationExpires: expires,
   });
@@ -200,6 +205,8 @@ exports.login = asyncHandler(async (req, res) => {
   }
   if (!user.isActive) throw new AppError("Your account has been deactivated. Contact support.", 403);
   if (user.isSuspended) throw new AppError("Your account has been suspended. Contact support.", 403);
+  const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
+  EnterpriseIdentityService.enforcePolicyForLogin(user, identityPolicy);
 
   const wasPreviouslyLocked = Boolean(user.loginLockedUntil);
   user.lastLoginAt = new Date();
@@ -215,6 +222,7 @@ exports.login = asyncHandler(async (req, res) => {
     sessionCount: user.refreshSessions?.length || 0,
     sessionId: user.refreshSessions?.[0]?.sessionId || "",
     ...getSessionClient(req),
+    mfaRequired: Boolean(identityPolicy.mfa.required && !user.twoFactorEnabled),
   });
 
   res
@@ -241,6 +249,7 @@ exports.refresh = asyncHandler(async (req, res) => {
 
   pruneRefreshSessions(user);
   const session = (user.refreshSessions || []).find((item) => item.sessionId === decoded.jti);
+  const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
   if (!session || new Date(session.expiresAt) <= new Date()) {
     clearRefreshCookie(res);
     if (user) await user.save({ validateBeforeSave: false });
@@ -250,6 +259,17 @@ exports.refresh = asyncHandler(async (req, res) => {
       ...getSessionClient(req),
     });
     throw new AppError("Refresh token is invalid or has expired.", 401);
+  }
+  if (!EnterpriseIdentityService.sessionPolicyAllows(session, identityPolicy)) {
+    revokeRefreshSession(user, decoded.jti);
+    await user.save({ validateBeforeSave: false });
+    clearRefreshCookie(res);
+    await auditAuthEvent(req, "auth.refresh_rejected", user, {
+      sessionId: decoded.jti,
+      reason: "security_policy_timeout",
+      ...getSessionClient(req),
+    });
+    throw new AppError("Session expired by organization security policy.", 401);
   }
 
   if (session.tokenHash !== hashToken(token)) {
@@ -368,11 +388,17 @@ exports.resetPassword = asyncHandler(async (req, res) => {
   const user = await User.findOne({
     passwordResetToken: hashed,
     passwordResetExpires: { $gt: Date.now() },
-  }).select("+passwordResetToken +passwordResetExpires +refreshSessions");
+  }).select("+passwordResetToken +passwordResetExpires +refreshSessions +passwordHistory");
 
   if (!user) throw new AppError("Reset token is invalid or has expired.", 400);
+  const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
+  const passwordCheck = EnterpriseIdentityService.validatePassword(password, identityPolicy.password, user.passwordHistory || []);
+  if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
 
+  const previousHash = user.passwordHash;
   user.passwordHash = await bcrypt.hash(password, 12);
+  user.passwordChangedAt = new Date();
+  user.passwordHistory = [previousHash, ...(user.passwordHistory || [])].filter(Boolean).slice(0, identityPolicy.password.historyCount || 0);
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
   user.refreshSessions = [];

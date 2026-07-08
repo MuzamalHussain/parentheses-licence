@@ -114,6 +114,12 @@ const productSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -135,5 +141,6 @@ productSchema.index({ status: 1 });
 productSchema.index({ status: 1, createdAt: -1 });
 productSchema.index({ defaultReleaseChannel: 1, status: 1 });
 productSchema.index({ name: "text", slug: "text", internalProductCode: "text" });
+productSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Product", productSchema);

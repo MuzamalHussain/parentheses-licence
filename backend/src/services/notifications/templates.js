@@ -82,7 +82,12 @@ const templates = {
 function renderTemplate(type, payload = {}) {
   const renderer = templates[type];
   if (!renderer) throw new Error(`Unknown notification template: ${type}`);
-  return renderer(payload);
+  const rendered = renderer(payload);
+  if (payload.brand && payload.applyBrand !== false) {
+    const BrandingService = require("../branding/BrandingService");
+    return BrandingService.themedEmail(rendered, payload.brand);
+  }
+  return rendered;
 }
 
 module.exports = { renderTemplate, templates };

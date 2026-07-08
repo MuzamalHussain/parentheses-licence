@@ -1,6 +1,6 @@
 # Production Checklist - Parentheses Licence 1.0.0
 
-Generated: 2026-07-08T06:45:28.911Z
+Generated: 2026-07-08T08:13:11.817Z
 
 - Confirm Railway backend variables match docs/ENVIRONMENT.md.
 - Confirm Vercel frontend VITE_API_URL points to https://api.blogpoint.net/api/v1.

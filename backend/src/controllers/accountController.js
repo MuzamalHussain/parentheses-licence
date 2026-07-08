@@ -2,10 +2,12 @@ const asyncHandler = require("express-async-handler");
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const AuditLog = require("../models/AuditLog");
+const OrganizationService = require("../services/organizationService");
 const { AppError } = require("../utils/errorHandler");
 const { writeAuditLog } = require("../utils/auditLog");
 const { activeSerializedSessions, getCurrentRefreshSessionId } = require("../utils/sessionSecurity");
 const { getConfig } = require("../config/env");
+const EnterpriseIdentityService = require("../services/identity/EnterpriseIdentityService");
 
 function auditAccountEvent(req, action, user, metadata = {}) {
   return writeAuditLog({
@@ -20,7 +22,8 @@ function auditAccountEvent(req, action, user, metadata = {}) {
 }
 
 exports.getProfile = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: req.user.toSafeJSON() });
+  const organizations = await OrganizationService.listOrganizations(req.user._id);
+  res.json({ success: true, data: { ...req.user.toSafeJSON(), organizations } });
 });
 
 exports.updateProfile = asyncHandler(async (req, res) => {
@@ -51,7 +54,7 @@ exports.updateProfile = asyncHandler(async (req, res) => {
 exports.changePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
-  const user = await User.findById(req.user._id).select("+passwordHash +refreshSessions");
+  const user = await User.findById(req.user._id).select("+passwordHash +refreshSessions +passwordHistory");
   if (!user) throw new AppError("User no longer exists.", 401);
 
   const passwordMatches = await user.comparePassword(currentPassword);
@@ -60,10 +63,17 @@ exports.changePassword = asyncHandler(async (req, res) => {
   const currentSessionId = getCurrentRefreshSessionId(req, user._id);
   const previousSessionCount = user.refreshSessions?.length || 0;
 
+  const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
+  const passwordCheck = EnterpriseIdentityService.validatePassword(newPassword, identityPolicy.password, user.passwordHistory || []);
+  if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
+
+  const previousHash = user.passwordHash;
   user.passwordHash = await bcrypt.hash(newPassword, 12);
-  user.refreshSessions = currentSessionId
-    ? (user.refreshSessions || []).filter((session) => session.sessionId === currentSessionId)
-    : [];
+  user.passwordChangedAt = new Date();
+  user.passwordHistory = [previousHash, ...(user.passwordHistory || [])].filter(Boolean).slice(0, identityPolicy.password.historyCount || 0);
+  user.refreshSessions = identityPolicy.sessions.revokeOnPasswordChange
+    ? (currentSessionId ? (user.refreshSessions || []).filter((session) => session.sessionId === currentSessionId) : [])
+    : (user.refreshSessions || []);
 
   await user.save({ validateBeforeSave: false });
   await auditAccountEvent(req, "account.password_changed", user, {

@@ -40,6 +40,12 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -52,5 +58,6 @@ paymentSchema.index(
   }
 );
 paymentSchema.index({ orderId: 1, createdAt: -1 });
+paymentSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Payment", paymentSchema);

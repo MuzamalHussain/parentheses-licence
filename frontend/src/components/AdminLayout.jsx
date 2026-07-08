@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity, Plug, Braces, Webhook, Rocket, BookOpen } from "lucide-react";
+import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity, Plug, Braces, Webhook, Rocket, BookOpen, KeyRound, Fingerprint, FileCheck2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
@@ -22,6 +22,9 @@ const navItems = [
   { to: "/admin/webhooks", icon: Webhook, label: "Webhooks", roles: ["admin"] },
   { to: "/admin/release-automation", icon: Rocket, label: "Releases", roles: ["admin"] },
   { to: "/admin/developer-portal", icon: BookOpen, label: "Developer Portal", roles: ["admin"] },
+  { to: "/admin/rbac", icon: KeyRound, label: "Teams & RBAC", roles: ["admin"] },
+  { to: "/admin/identity", icon: Fingerprint, label: "Identity", roles: ["admin"] },
+  { to: "/admin/compliance", icon: FileCheck2, label: "Compliance", roles: ["admin"] },
   { to: "/admin/settings", icon: Settings, label: "Settings", roles: ["admin"] },
 ];
 

@@ -36,6 +36,12 @@ const licenseSiteSchema = new mongoose.Schema(
     suspendedAt: { type: Date, default: null },
     suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     metadata: { type: Object, default: {} },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -44,5 +50,6 @@ licenseSiteSchema.index({ licenseId: 1, domain: 1 }, { unique: true });
 licenseSiteSchema.index({ licenseId: 1, status: 1, updatedAt: -1 });
 licenseSiteSchema.index({ userId: 1, status: 1, updatedAt: -1 });
 licenseSiteSchema.index({ productId: 1, environment: 1 });
+licenseSiteSchema.index({ organizationId: 1, status: 1, updatedAt: -1 });
 
 module.exports = mongoose.model("LicenseSite", licenseSiteSchema);

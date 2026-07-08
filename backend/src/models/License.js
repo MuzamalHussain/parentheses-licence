@@ -186,6 +186,12 @@ const licenseSchema = new mongoose.Schema(
     expiredBy:   { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     revokedBy:   { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -202,6 +208,8 @@ licenseSchema.index({ planId: 1 });
 licenseSchema.index({ "activeDomains.domain": 1 });
 licenseSchema.index({ expiresAt: 1 }, { sparse: true });
 licenseSchema.index({ orderId: 1 });
+licenseSchema.index({ organizationId: 1, status: 1, createdAt: -1 });
+licenseSchema.index({ organizationId: 1, userId: 1, status: 1 });
 
 // Virtual: number of used sites
 licenseSchema.virtual("usedSites").get(function () {
