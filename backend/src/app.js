@@ -16,6 +16,9 @@ const {
 } = require("./middleware/apiSecurity");
 const { performanceLogger } = require("./middleware/performanceLogger");
 const healthRoutes = require("./routes/health");
+const { trackRequest } = require("./services/ShutdownCoordinator");
+const TraceManager = require("./services/observability/TraceManager");
+const ZeroTrust = require("./services/security/ZeroTrustManager");
 
 const app = express();
 const config = getConfig();
@@ -38,13 +41,23 @@ app.use(
         frameAncestors: ["'none'"],
       },
     },
+    referrerPolicy: { policy: "no-referrer" },
+    hsts: { maxAge: 15552000, includeSubDomains: true },
+    xFrameOptions: { action: "deny" },
     crossOriginResourcePolicy: { policy: "same-site" },
   })
 );
+app.use((req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  next();
+});
 
 // ── Response compression ──────────────────────────────────────────────────────
 app.use(compression());
 app.use(requestContext);
+app.use(TraceManager.middleware);
+app.use(ZeroTrust.middleware);
+app.use(trackRequest);
 app.use(performanceLogger);
 app.use(apiAuditLogger);
 
@@ -133,6 +146,12 @@ app.use("/api/v1/admin/notifications", require("./routes/adminNotifications"));
 app.use("/api/v1/admin/settings",      require("./routes/adminSettings"));
 app.use("/api/v1/admin/diagnostics",   require("./routes/adminDiagnostics"));
 app.use("/api/v1/admin/operations",    require("./routes/adminOperations"));
+app.use("/api/v1/admin/infrastructure", require("./routes/adminInfrastructure"));
+app.use("/api/v1/admin/performance",   require("./routes/adminPerformance"));
+app.use("/api/v1/admin/observability", require("./routes/adminObservability"));
+app.use("/api/v1/admin/disaster-recovery", require("./routes/adminDisasterRecovery"));
+app.use("/api/v1/admin/deployments", require("./routes/adminDeployments"));
+app.use("/api/v1/admin/security", require("./routes/adminSecurity"));
 app.use("/api/v1/admin/integrations",  require("./routes/adminIntegrations"));
 app.use("/api/v1/admin/api-keys",      require("./routes/adminApiKeys"));
 app.use("/api/v1/admin/webhooks",      require("./routes/adminWebhooks"));

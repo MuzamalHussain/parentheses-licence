@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity, Plug, Braces, Webhook, Rocket, BookOpen, KeyRound, Fingerprint, FileCheck2, Bot, BrainCircuit, ShieldAlert, Sparkles, Code2 } from "lucide-react";
+import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity, Plug, Braces, Webhook, Rocket, BookOpen, KeyRound, Fingerprint, FileCheck2, Bot, BrainCircuit, ShieldAlert, Sparkles, Code2, Server, Gauge, Siren, ArchiveRestore, GitBranch } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
@@ -17,6 +17,12 @@ const navItems = [
   { to: "/admin/audit", icon: FileText, label: "Audit Log" },
   { to: "/admin/workflows", icon: Workflow, label: "Automation", roles: ["admin"] },
   { to: "/admin/operations", icon: Activity, label: "Operations", roles: ["admin"] },
+  { to: "/admin/infrastructure", icon: Server, label: "Infrastructure", roles: ["admin"] },
+  { to: "/admin/performance", icon: Gauge, label: "Performance", roles: ["admin"] },
+  { to: "/admin/observability", icon: Siren, label: "Observability", roles: ["admin"] },
+  { to: "/admin/disaster-recovery", icon: ArchiveRestore, label: "Recovery", roles: ["admin"] },
+  { to: "/admin/deployments", icon: GitBranch, label: "Deployments", roles: ["admin"] },
+  { to: "/admin/security", icon: ShieldCheck, label: "Security", roles: ["admin"] },
   { to: "/admin/integrations", icon: Plug, label: "Integrations", roles: ["admin"] },
   { to: "/admin/api-keys", icon: Braces, label: "API Keys", roles: ["admin"] },
   { to: "/admin/webhooks", icon: Webhook, label: "Webhooks", roles: ["admin"] },

@@ -1,31 +1,16 @@
 const mongoose = require("mongoose");
 const { getRedisClient } = require("../config/redis");
 const { logInfo, logError } = require("../utils/logger");
+const ShutdownCoordinator = require("./ShutdownCoordinator");
 
 async function shutdown({ server = null, signal = "manual", exit = true, timeoutMs = 10_000 } = {}) {
   let timeout;
   try {
     logInfo("shutdown.started", { signal });
-    const closeHttp = server
-      ? new Promise((resolve, reject) => {
-          timeout = setTimeout(() => reject(new Error("HTTP shutdown timeout")), timeoutMs);
-          server.close((err) => (err ? reject(err) : resolve()));
-        })
-      : Promise.resolve();
-
-    await closeHttp;
+    timeout = setTimeout(() => {}, timeoutMs);
+    const result = await ShutdownCoordinator.drain({ server, timeoutMs });
     if (timeout) clearTimeout(timeout);
-
-    const redis = getRedisClient();
-    if (redis?.status && redis.status !== "end") {
-      await redis.quit().catch(() => redis.disconnect());
-    }
-
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
-    }
-
-    logInfo("shutdown.completed", { signal });
+    logInfo("shutdown.completed", { signal, result });
     if (exit) process.exit(0);
   } catch (err) {
     if (timeout) clearTimeout(timeout);

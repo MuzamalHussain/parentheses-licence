@@ -45,8 +45,8 @@ class LocalStorageAdapter {
 }
 
 class S3CompatibleStorageAdapter {
-  constructor() {
-    this.provider = "s3";
+  constructor(provider = "s3") {
+    this.provider = provider;
   }
 
   async stat() {
@@ -54,16 +54,41 @@ class S3CompatibleStorageAdapter {
   }
 
   createReadStream() {
-    throw new Error("S3-compatible download streaming is not configured in this deployment.");
+    throw new Error(`${this.provider} download streaming is not configured in this deployment.`);
+  }
+}
+
+class CloudflareR2StorageAdapter extends S3CompatibleStorageAdapter {
+  constructor() {
+    super("r2");
+  }
+}
+
+class AzureBlobStorageAdapter extends S3CompatibleStorageAdapter {
+  constructor() {
+    super("azure_blob");
+  }
+}
+
+class GoogleCloudStorageAdapter extends S3CompatibleStorageAdapter {
+  constructor() {
+    super("gcs");
   }
 }
 
 function getStorageAdapter(provider = getConfig().storage.provider) {
-  if (String(provider).toLowerCase() === "s3") return new S3CompatibleStorageAdapter();
+  const key = String(provider).toLowerCase();
+  if (key === "s3") return new S3CompatibleStorageAdapter("s3");
+  if (key === "r2" || key === "cloudflare_r2") return new CloudflareR2StorageAdapter();
+  if (key === "azure" || key === "azure_blob") return new AzureBlobStorageAdapter();
+  if (key === "gcs" || key === "google_cloud_storage") return new GoogleCloudStorageAdapter();
   return new LocalStorageAdapter();
 }
 
 module.exports = {
+  AzureBlobStorageAdapter,
+  CloudflareR2StorageAdapter,
+  GoogleCloudStorageAdapter,
   LocalStorageAdapter,
   S3CompatibleStorageAdapter,
   getStorageAdapter,

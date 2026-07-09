@@ -37,6 +37,12 @@ import AdminSupport from "./pages/admin/AdminSupport";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminWorkflows from "./pages/admin/AdminWorkflows";
 import AdminOperations from "./pages/admin/AdminOperations";
+import AdminInfrastructure from "./pages/admin/AdminInfrastructure";
+import AdminPerformance from "./pages/admin/AdminPerformance";
+import AdminObservability from "./pages/admin/AdminObservability";
+import AdminDisasterRecovery from "./pages/admin/AdminDisasterRecovery";
+import AdminDeployments from "./pages/admin/AdminDeployments";
+import AdminSecurity from "./pages/admin/AdminSecurity";
 import AdminIntegrations from "./pages/admin/AdminIntegrations";
 import AdminApiKeys from "./pages/admin/AdminApiKeys";
 import AdminWebhooks from "./pages/admin/AdminWebhooks";
@@ -98,6 +104,12 @@ export default function App() {
                 <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
                 <Route path="/admin/workflows" element={<AdminWorkflows />} />
                 <Route path="/admin/operations" element={<AdminOperations />} />
+                <Route path="/admin/infrastructure" element={<AdminInfrastructure />} />
+                <Route path="/admin/performance" element={<AdminPerformance />} />
+                <Route path="/admin/observability" element={<AdminObservability />} />
+                <Route path="/admin/disaster-recovery" element={<AdminDisasterRecovery />} />
+                <Route path="/admin/deployments" element={<AdminDeployments />} />
+                <Route path="/admin/security" element={<AdminSecurity />} />
                 <Route path="/admin/integrations" element={<AdminIntegrations />} />
                 <Route path="/admin/api-keys" element={<AdminApiKeys />} />
                 <Route path="/admin/webhooks" element={<AdminWebhooks />} />

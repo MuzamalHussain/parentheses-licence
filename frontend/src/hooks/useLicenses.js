@@ -53,6 +53,134 @@ export const useOperationsAction = () => {
   });
 };
 
+export const useAdminInfrastructureDashboard = () =>
+  useQuery({
+    queryKey: ["admin-infrastructure-dashboard"],
+    queryFn: () => api.get("/admin/infrastructure/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useAdminPerformanceDashboard = () =>
+  useQuery({
+    queryKey: ["admin-performance-dashboard"],
+    queryFn: () => api.get("/admin/performance/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const usePerformanceAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, body = {} }) => {
+      if (action === "warm") return api.post("/admin/performance/cache/warm", body).then((r) => r.data);
+      if (action === "invalidate") return api.post("/admin/performance/cache/invalidate", body).then((r) => r.data);
+      throw new Error("Unknown performance action.");
+    },
+    onSuccess: () => {
+      toast.success("Performance action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-performance-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["admin-infrastructure-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Performance action failed."),
+  });
+};
+
+export const useAdminObservabilityDashboard = () =>
+  useQuery({
+    queryKey: ["admin-observability-dashboard"],
+    queryFn: () => api.get("/admin/observability/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useObservabilityAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, id, body = {} }) => {
+      if (action === "create-incident") return api.post("/admin/observability/incidents", body).then((r) => r.data);
+      if (action === "resolve-incident") return api.post(`/admin/observability/incidents/${id}/resolve`, body).then((r) => r.data);
+      if (action === "acknowledge-alert") return api.post(`/admin/observability/alerts/${id}/acknowledge`, body).then((r) => r.data);
+      throw new Error("Unknown observability action.");
+    },
+    onSuccess: () => {
+      toast.success("Monitoring action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-observability-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Monitoring action failed."),
+  });
+};
+
+export const useAdminDisasterRecoveryDashboard = () =>
+  useQuery({
+    queryKey: ["admin-disaster-recovery-dashboard"],
+    queryFn: () => api.get("/admin/disaster-recovery/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useDisasterRecoveryAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, id, body = {} }) => {
+      if (action === "backup") return api.post("/admin/disaster-recovery/backups", body).then((r) => r.data);
+      if (action === "restore-validate") return api.post("/admin/disaster-recovery/restore/validate", body).then((r) => r.data);
+      if (action === "verify") return api.get(`/admin/disaster-recovery/backups/${id}/verify`).then((r) => r.data);
+      if (action === "schedule") return api.post("/admin/disaster-recovery/schedules", body).then((r) => r.data);
+      throw new Error("Unknown disaster recovery action.");
+    },
+    onSuccess: () => {
+      toast.success("Recovery action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-disaster-recovery-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Recovery action failed."),
+  });
+};
+
+export const useAdminDeploymentDashboard = () =>
+  useQuery({
+    queryKey: ["admin-deployment-dashboard"],
+    queryFn: () => api.get("/admin/deployments/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useDeploymentAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, id, body = {} }) => {
+      if (action === "start") return api.post("/admin/deployments/deployments", body).then((r) => r.data);
+      if (action === "promote") return api.post("/admin/deployments/promote", body).then((r) => r.data);
+      if (action === "approve") return api.post(`/admin/deployments/approvals/${id}`, body).then((r) => r.data);
+      if (action === "rollback-validate") return api.post("/admin/deployments/rollback/validate", body).then((r) => r.data);
+      throw new Error("Unknown deployment action.");
+    },
+    onSuccess: () => {
+      toast.success("Deployment action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-deployment-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Deployment action failed."),
+  });
+};
+
+export const useAdminSecurityDashboard = () =>
+  useQuery({
+    queryKey: ["admin-security-dashboard"],
+    queryFn: () => api.get("/admin/security/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useSecurityAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, scope, sessionId, body = {} }) => {
+      if (action === "policy") return api.patch(`/admin/security/policies/${scope}`, body).then((r) => r.data);
+      if (action === "revoke-session") return api.post(`/admin/security/sessions/${sessionId}/revoke`, body).then((r) => r.data);
+      throw new Error("Unknown security action.");
+    },
+    onSuccess: () => {
+      toast.success("Security action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-security-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Security action failed."),
+  });
+};
+
 export const useAdminIntegrations = () =>
   useQuery({
     queryKey: ["admin-integrations"],
