@@ -1,0 +1,40 @@
+const asyncHandler = require("express-async-handler");
+const DeveloperCopilot = require("../services/aiDeveloper/AIDeveloperAssistant");
+
+function orgId(req) {
+  return req.params.organizationId || req.body.organizationId || req.query.organizationId || req.user.activeOrganizationId;
+}
+
+function context(req) {
+  return { actor: req.user, ip: req.ip, requestId: req.id };
+}
+
+exports.dashboard = asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: DeveloperCopilot.dashboard() });
+});
+
+exports.prompts = asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: DeveloperCopilot.promptLibrary() });
+});
+
+exports.ask = asyncHandler(async (req, res) => {
+  const data = await DeveloperCopilot.ask({
+    actor: req.user,
+    organizationId: orgId(req),
+    question: req.body.question,
+    category: req.body.category,
+    language: req.body.language,
+    endpointId: req.body.endpointId,
+    topic: req.body.topic,
+  }, context(req));
+  res.status(201).json({ success: true, data });
+});
+
+exports.history = asyncHandler(async (req, res) => {
+  const data = await DeveloperCopilot.history({
+    actor: req.user,
+    organizationId: orgId(req),
+    limit: req.query.limit,
+  });
+  res.json({ success: true, data });
+});

@@ -252,6 +252,253 @@ export const useComplianceAction = () => {
   });
 };
 
+export const useAdminAI = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-ai", organizationId],
+    queryFn: () => api.get("/admin/ai", { params: { organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAIAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, providerId, body = {} }) => {
+      const payload = { ...body, organizationId };
+      if (action === "provider") return api.post("/admin/ai/providers", payload).then((r) => r.data);
+      if (action === "provider-health") return api.post(`/admin/ai/providers/${providerId}/health`, payload).then((r) => r.data);
+      if (action === "model") return api.post("/admin/ai/models", payload).then((r) => r.data);
+      if (action === "prompt") return api.post("/admin/ai/prompts", payload).then((r) => r.data);
+      if (action === "usage") return api.post("/admin/ai/usage/track", payload).then((r) => r.data);
+      throw new Error("Unknown AI action.");
+    },
+    onSuccess: (_, vars) => {
+      toast.success("AI platform updated.");
+      qc.invalidateQueries({ queryKey: ["admin-ai", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "AI action failed."),
+  });
+};
+
+export const useAIAssistantHistory = () =>
+  useQuery({
+    queryKey: ["ai-assistant-history"],
+    queryFn: () => api.get("/ai-assistant/conversations").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useAskAIAssistant = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.post("/ai-assistant/ask", body).then((r) => r.data.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-assistant-history"] }),
+    onError: (err) => toast.error(err.response?.data?.message || "Assistant request failed."),
+  });
+};
+
+export const useAdminAIAssistant = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-ai-assistant", organizationId],
+    queryFn: async () => {
+      const [history, stats] = await Promise.all([
+        api.get("/admin/ai-assistant/conversations", { params: { organizationId } }).then((r) => r.data.data),
+        api.get("/admin/ai-assistant/stats", { params: { organizationId } }).then((r) => r.data.data),
+      ]);
+      return { history, stats };
+    },
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAskAdminAIAssistant = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, question }) => api.post("/admin/ai-assistant/ask", { organizationId, question }).then((r) => r.data.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["admin-ai-assistant", vars.organizationId] }),
+    onError: (err) => toast.error(err.response?.data?.message || "Assistant request failed."),
+  });
+};
+
+export const useAdminAIBusiness = (organizationId, params = {}) =>
+  useQuery({
+    queryKey: ["admin-ai-business", organizationId, params],
+    queryFn: async () => {
+      const requestParams = { ...params, organizationId };
+      const [dashboard, history] = await Promise.all([
+        api.get("/admin/ai-business/dashboard", { params: requestParams }).then((r) => r.data.data),
+        api.get("/admin/ai-business/history", { params: { organizationId, limit: 12 } }).then((r) => r.data.data),
+      ]);
+      return { dashboard, history };
+    },
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAskAIBusiness = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, question, period }) =>
+      api.post("/admin/ai-business/query", { organizationId, question, period }).then((r) => r.data.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["admin-ai-business", vars.organizationId] }),
+    onError: (err) => toast.error(err.response?.data?.message || "Business insight request failed."),
+  });
+};
+
+export const useAdminAIFraud = (organizationId, params = {}) =>
+  useQuery({
+    queryKey: ["admin-ai-fraud", organizationId, params],
+    queryFn: async () => {
+      const requestParams = { ...params, organizationId };
+      const [dashboard, history] = await Promise.all([
+        api.get("/admin/ai-fraud/dashboard", { params: requestParams }).then((r) => r.data.data),
+        api.get("/admin/ai-fraud/history", { params: { organizationId, limit: 20 } }).then((r) => r.data.data),
+      ]);
+      return { dashboard, history };
+    },
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAdminAIWorkflows = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-ai-workflows", organizationId],
+    queryFn: () => api.get("/admin/ai-workflows/dashboard", { params: { organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAIWorkflowAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, id, body = {} }) => {
+      const payload = { ...body, organizationId };
+      if (action === "plan") return api.post("/admin/ai-workflows/plan", payload).then((r) => r.data.data);
+      if (action === "policy") return api.post("/admin/ai-workflows/policies", payload).then((r) => r.data.data);
+      if (["approve", "reject", "execute"].includes(action)) return api.post(`/admin/ai-workflows/approvals/${id}/${action}`, payload).then((r) => r.data.data);
+      throw new Error("Unknown AI workflow action.");
+    },
+    onSuccess: (_, vars) => {
+      toast.success("AI workflow updated.");
+      qc.invalidateQueries({ queryKey: ["admin-ai-workflows", vars.organizationId] });
+      qc.invalidateQueries({ queryKey: ["admin-workflows-overview"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "AI workflow action failed."),
+  });
+};
+
+export const useAdminAICommand = (organizationId, params = {}) =>
+  useQuery({
+    queryKey: ["admin-ai-command", organizationId, params],
+    queryFn: () => api.get("/admin/ai-command/dashboard", { params: { ...params, organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAICommandQuestion = () =>
+  useMutation({
+    mutationFn: ({ organizationId, question }) =>
+      api.post("/admin/ai-command/command", { organizationId, question }).then((r) => r.data.data),
+    onError: (err) => toast.error(err.response?.data?.message || "AI command failed."),
+  });
+
+export const useAdminAIReleaseHistory = (organizationId, productId = "") =>
+  useQuery({
+    queryKey: ["admin-ai-release", organizationId, productId],
+    queryFn: () => api.get("/admin/ai-release/history", { params: { organizationId, productId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAnalyzeAIRelease = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ organizationId, productId, versionId }) =>
+      api.post("/admin/ai-release/analyze", { organizationId, productId, versionId }).then((r) => r.data.data),
+    onSuccess: (_, vars) => {
+      toast.success("Release analysis generated.");
+      qc.invalidateQueries({ queryKey: ["admin-ai-release", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Release analysis failed."),
+  });
+};
+
+export const useAdminAIDeveloper = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-ai-developer", organizationId],
+    queryFn: async () => {
+      const [dashboard, history] = await Promise.all([
+        api.get("/admin/ai-developer", { params: { organizationId } }).then((r) => r.data.data),
+        api.get("/admin/ai-developer/history", { params: { organizationId, limit: 20 } }).then((r) => r.data.data),
+      ]);
+      return { dashboard, history };
+    },
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAIDeveloperAsk = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.post("/admin/ai-developer/ask", body).then((r) => r.data.data),
+    onSuccess: (_, vars) => {
+      toast.success("Developer guidance generated.");
+      qc.invalidateQueries({ queryKey: ["admin-ai-developer", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Developer copilot request failed."),
+  });
+};
+
+export const useAdminAIForecast = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-ai-forecast", organizationId],
+    queryFn: () => api.get("/admin/ai-forecast/history", { params: { organizationId, limit: 10 } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useGenerateAIForecast = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.post("/admin/ai-forecast/generate", body).then((r) => r.data.data),
+    onSuccess: (_, vars) => {
+      toast.success("Forecast generated.");
+      qc.invalidateQueries({ queryKey: ["admin-ai-forecast", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Forecast generation failed."),
+  });
+};
+
+export const useAdminAIGovernance = (organizationId) =>
+  useQuery({
+    queryKey: ["admin-ai-governance", organizationId],
+    queryFn: () => api.get("/admin/ai-governance", { params: { organizationId } }).then((r) => r.data.data),
+    enabled: Boolean(organizationId),
+    staleTime: 30_000,
+  });
+
+export const useAIGovernanceAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, organizationId, body = {} }) => {
+      const payload = { ...body, organizationId };
+      if (action === "policy") return api.post("/admin/ai-governance/policy", payload).then((r) => r.data.data);
+      if (action === "enforce") return api.post("/admin/ai-governance/policy/enforce", payload).then((r) => r.data.data);
+      if (action === "prompt") return api.post("/admin/ai-governance/prompts", payload).then((r) => r.data.data);
+      if (action === "prompt-transition") return api.post("/admin/ai-governance/prompts/transition", payload).then((r) => r.data.data);
+      if (action === "prompt-rollback") return api.post("/admin/ai-governance/prompts/rollback", payload).then((r) => r.data.data);
+      if (action === "model-transition") return api.post("/admin/ai-governance/models/transition", payload).then((r) => r.data.data);
+      if (action === "model-version") return api.post("/admin/ai-governance/models/version", payload).then((r) => r.data.data);
+      throw new Error("Unknown AI governance action.");
+    },
+    onSuccess: (_, vars) => {
+      toast.success("AI governance updated.");
+      qc.invalidateQueries({ queryKey: ["admin-ai-governance", vars.organizationId] });
+      qc.invalidateQueries({ queryKey: ["admin-ai", vars.organizationId] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "AI governance action failed."),
+  });
+};
+
 export const useAdminLicenses = (params = {}) =>
   useQuery({
     queryKey: ["admin-licenses", params],

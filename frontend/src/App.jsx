@@ -19,6 +19,7 @@ import LicensesPage from "./pages/portal/LicensesPage";
 import DownloadsPage from "./pages/portal/DownloadsPage";
 import OrdersPage from "./pages/portal/OrdersPage";
 import SupportPage from "./pages/portal/SupportPage";
+import AIAssistantPage from "./pages/portal/AIAssistantPage";
 import ProfilePage from "./pages/portal/ProfilePage";
 import OrganizationsPage from "./pages/portal/OrganizationsPage";
 import BrandSettingsPage from "./pages/portal/BrandSettingsPage";
@@ -44,6 +45,16 @@ import AdminDeveloperPortal from "./pages/admin/AdminDeveloperPortal";
 import AdminRbac from "./pages/admin/AdminRbac";
 import AdminIdentity from "./pages/admin/AdminIdentity";
 import AdminCompliance from "./pages/admin/AdminCompliance";
+import AdminAI from "./pages/admin/AdminAI";
+import AdminAIAssistant from "./pages/admin/AdminAIAssistant";
+import AdminAIBusiness from "./pages/admin/AdminAIBusiness";
+import AdminAIFraud from "./pages/admin/AdminAIFraud";
+import AdminAIWorkflows from "./pages/admin/AdminAIWorkflows";
+import AdminAICommand from "./pages/admin/AdminAICommand";
+import AdminAIRelease from "./pages/admin/AdminAIRelease";
+import AdminAIDeveloper from "./pages/admin/AdminAIDeveloper";
+import AdminAIForecast from "./pages/admin/AdminAIForecast";
+import AdminAIGovernance from "./pages/admin/AdminAIGovernance";
 import AdminSettings from "./pages/admin/AdminSettings";
 
 const queryClient = new QueryClient({
@@ -74,6 +85,7 @@ export default function App() {
                 <Route path="/dashboard/downloads" element={<DownloadsPage />} />
                 <Route path="/dashboard/orders" element={<OrdersPage />} />
                 <Route path="/dashboard/support" element={<SupportPage />} />
+                <Route path="/dashboard/assistant" element={<AIAssistantPage />} />
                 <Route path="/dashboard/organizations" element={<OrganizationsPage />} />
                 <Route path="/dashboard/brand" element={<BrandSettingsPage />} />
                 <Route path="/dashboard/profile" element={<ProfilePage />} />
@@ -94,6 +106,16 @@ export default function App() {
                 <Route path="/admin/rbac" element={<AdminRbac />} />
                 <Route path="/admin/identity" element={<AdminIdentity />} />
                 <Route path="/admin/compliance" element={<AdminCompliance />} />
+                <Route path="/admin/ai" element={<AdminAI />} />
+                <Route path="/admin/ai-assistant" element={<AdminAIAssistant />} />
+                <Route path="/admin/ai-business" element={<AdminAIBusiness />} />
+                <Route path="/admin/ai-fraud" element={<AdminAIFraud />} />
+                <Route path="/admin/ai-workflows" element={<AdminAIWorkflows />} />
+                <Route path="/admin/ai-command" element={<AdminAICommand />} />
+                <Route path="/admin/ai-release" element={<AdminAIRelease />} />
+                <Route path="/admin/ai-developer" element={<AdminAIDeveloper />} />
+                <Route path="/admin/ai-forecast" element={<AdminAIForecast />} />
+                <Route path="/admin/ai-governance" element={<AdminAIGovernance />} />
               </Route>
             </Route>
 

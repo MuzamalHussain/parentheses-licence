@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity, Plug, Braces, Webhook, Rocket, BookOpen, KeyRound, Fingerprint, FileCheck2 } from "lucide-react";
+import { LayoutDashboard, Package, Key, Users, Globe, Download, ShoppingCart, Ticket, FileText, LogOut, Menu, ShieldCheck, Tag, Settings, Workflow, Activity, Plug, Braces, Webhook, Rocket, BookOpen, KeyRound, Fingerprint, FileCheck2, Bot, BrainCircuit, ShieldAlert, Sparkles, Code2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
@@ -25,6 +25,16 @@ const navItems = [
   { to: "/admin/rbac", icon: KeyRound, label: "Teams & RBAC", roles: ["admin"] },
   { to: "/admin/identity", icon: Fingerprint, label: "Identity", roles: ["admin"] },
   { to: "/admin/compliance", icon: FileCheck2, label: "Compliance", roles: ["admin"] },
+  { to: "/admin/ai", icon: Bot, label: "AI Platform", roles: ["admin"] },
+  { to: "/admin/ai-assistant", icon: Bot, label: "AI Assistant", roles: ["admin"] },
+  { to: "/admin/ai-business", icon: BrainCircuit, label: "AI Insights", roles: ["admin"] },
+  { to: "/admin/ai-fraud", icon: ShieldAlert, label: "AI Fraud", roles: ["admin"] },
+  { to: "/admin/ai-workflows", icon: Sparkles, label: "AI Workflows", roles: ["admin"] },
+  { to: "/admin/ai-command", icon: Activity, label: "AI Command", roles: ["admin"] },
+  { to: "/admin/ai-release", icon: Rocket, label: "AI Releases", roles: ["admin"] },
+  { to: "/admin/ai-developer", icon: Code2, label: "AI Developer", roles: ["admin"] },
+  { to: "/admin/ai-forecast", icon: BrainCircuit, label: "AI Forecast", roles: ["admin"] },
+  { to: "/admin/ai-governance", icon: ShieldAlert, label: "AI Governance", roles: ["admin"] },
   { to: "/admin/settings", icon: Settings, label: "Settings", roles: ["admin"] },
 ];
 

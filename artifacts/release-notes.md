@@ -1,6 +1,6 @@
 # Parentheses Licence 1.0.0
 
-Generated: 2026-07-08T08:13:11.817Z
+Generated: 2026-07-09T11:55:28.405Z
 
 ## Release Scope
 

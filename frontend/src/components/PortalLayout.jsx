@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Key, Download, ShoppingCart, HeadphonesIcon, LogOut, Menu, User, Package, Building2, Paintbrush } from "lucide-react";
+import { LayoutDashboard, Key, Download, ShoppingCart, HeadphonesIcon, LogOut, Menu, User, Package, Building2, Paintbrush, Bot } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { usePublicBrand } from "../hooks/useAccount";
 import toast from "react-hot-toast";
@@ -12,6 +12,7 @@ const navItems = [
   { to: "/dashboard/downloads", icon: Download, label: "Downloads" },
   { to: "/dashboard/orders", icon: ShoppingCart, label: "Orders & Billing" },
   { to: "/dashboard/support", icon: HeadphonesIcon, label: "Support" },
+  { to: "/dashboard/assistant", icon: Bot, label: "AI Assistant" },
   { to: "/dashboard/organizations", icon: Building2, label: "Organizations" },
   { to: "/dashboard/brand", icon: Paintbrush, label: "Brand Settings" },
   { to: "/dashboard/profile", icon: User, label: "Profile" },
