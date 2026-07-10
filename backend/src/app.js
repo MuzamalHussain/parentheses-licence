@@ -152,6 +152,7 @@ app.use("/api/v1/admin/observability", require("./routes/adminObservability"));
 app.use("/api/v1/admin/disaster-recovery", require("./routes/adminDisasterRecovery"));
 app.use("/api/v1/admin/deployments", require("./routes/adminDeployments"));
 app.use("/api/v1/admin/security", require("./routes/adminSecurity"));
+app.use("/api/v1/admin/marketplace", require("./routes/adminMarketplace"));
 app.use("/api/v1/admin/integrations",  require("./routes/adminIntegrations"));
 app.use("/api/v1/admin/api-keys",      require("./routes/adminApiKeys"));
 app.use("/api/v1/admin/webhooks",      require("./routes/adminWebhooks"));

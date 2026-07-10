@@ -35,6 +35,11 @@ const summary = {
     "known-issues.md",
     "upgrade-notes.md",
     "production-checklist.md",
+    "enterprise-certification.json",
+    "enterprise-certification.md",
+    "technical-debt.md",
+    "migration-notes.md",
+    "installation-guide.md",
   ],
 };
 

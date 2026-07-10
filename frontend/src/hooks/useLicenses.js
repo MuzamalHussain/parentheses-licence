@@ -181,6 +181,29 @@ export const useSecurityAction = () => {
   });
 };
 
+export const useAdminMarketplaceDashboard = () =>
+  useQuery({
+    queryKey: ["admin-marketplace-dashboard"],
+    queryFn: () => api.get("/admin/marketplace/dashboard").then((r) => r.data.data),
+    staleTime: 30_000,
+  });
+
+export const useMarketplaceAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, id, body = {} }) => {
+      if (action === "add-catalog") return api.post("/admin/marketplace/catalog", body).then((r) => r.data);
+      if (action === "validate-manifest") return api.post("/admin/marketplace/manifest/validate", body).then((r) => r.data);
+      return api.post(`/admin/marketplace/extensions/${id}/${action}`, body).then((r) => r.data);
+    },
+    onSuccess: () => {
+      toast.success("Marketplace action completed.");
+      qc.invalidateQueries({ queryKey: ["admin-marketplace-dashboard"] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Marketplace action failed."),
+  });
+};
+
 export const useAdminIntegrations = () =>
   useQuery({
     queryKey: ["admin-integrations"],

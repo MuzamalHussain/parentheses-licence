@@ -18,7 +18,8 @@
     "security:check": "npm --prefix backend audit --audit-level=high && npm --prefix frontend audit --audit-level=high",
     "ci": "npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test && npm run verify:release",
     "verify:workflows": "node scripts/verify-workflows.js",
-    "verify:release": "npm run verify:workflows && node scripts/generate-release-summary.js",
+    "verify:release": "npm run verify:workflows && node scripts/generate-release-summary.js && node scripts/generate-enterprise-certification.js",
+    "certify:enterprise": "node scripts/generate-enterprise-certification.js && node scripts/validate-artifacts.js",
     "artifacts:validate": "node scripts/validate-artifacts.js"
   }
 }

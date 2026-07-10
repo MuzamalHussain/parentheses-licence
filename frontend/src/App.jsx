@@ -43,6 +43,7 @@ import AdminObservability from "./pages/admin/AdminObservability";
 import AdminDisasterRecovery from "./pages/admin/AdminDisasterRecovery";
 import AdminDeployments from "./pages/admin/AdminDeployments";
 import AdminSecurity from "./pages/admin/AdminSecurity";
+import AdminMarketplace from "./pages/admin/AdminMarketplace";
 import AdminIntegrations from "./pages/admin/AdminIntegrations";
 import AdminApiKeys from "./pages/admin/AdminApiKeys";
 import AdminWebhooks from "./pages/admin/AdminWebhooks";
@@ -110,6 +111,7 @@ export default function App() {
                 <Route path="/admin/disaster-recovery" element={<AdminDisasterRecovery />} />
                 <Route path="/admin/deployments" element={<AdminDeployments />} />
                 <Route path="/admin/security" element={<AdminSecurity />} />
+                <Route path="/admin/marketplace" element={<AdminMarketplace />} />
                 <Route path="/admin/integrations" element={<AdminIntegrations />} />
                 <Route path="/admin/api-keys" element={<AdminApiKeys />} />
                 <Route path="/admin/webhooks" element={<AdminWebhooks />} />

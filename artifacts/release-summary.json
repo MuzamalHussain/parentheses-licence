@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-09T12:17:02.837Z",
+  "generatedAt": "2026-07-10T05:43:16.988Z",
   "version": "1.0.0",
   "releaseLabel": "1.0.0",
   "packages": {
@@ -22,6 +22,11 @@
     "release-notes.md",
     "known-issues.md",
     "upgrade-notes.md",
-    "production-checklist.md"
+    "production-checklist.md",
+    "enterprise-certification.json",
+    "enterprise-certification.md",
+    "technical-debt.md",
+    "migration-notes.md",
+    "installation-guide.md"
   ]
 }
