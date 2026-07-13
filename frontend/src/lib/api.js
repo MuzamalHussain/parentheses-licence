@@ -31,6 +31,7 @@ const isNonRefreshableAuthRoute = (path) =>
     "/auth/forgot-password",
     "/auth/reset-password",
     "/auth/verify-email",
+    "/auth/resend-verification",
     "/account/change-password",
   ].some((route) => path.endsWith(route));
 

@@ -64,6 +64,7 @@ function createHarness(initialUser = createUser()) {
   };
 
   const UserMock = {
+    async populate(value) { return value; },
     findById(id) {
       return query(store.user && store.user._id.toString() === id.toString() ? store.user : null);
     },
@@ -199,6 +200,8 @@ async function testEmailVerificationAndInternalNote() {
   const verified = await call(controller.updateCustomerEmailVerification, createReq({ body: { emailVerified: true } }));
   assert.ifError(verified.error);
   assert.strictEqual(harness.store.user.emailVerified, true);
+  assert.ok(harness.store.user.emailVerifiedAt);
+  assert.strictEqual(harness.store.user.emailVerificationSource, "manual_admin");
   assert.strictEqual(harness.store.auditLogs[0].action, "admin.user.email_verified");
 
   const noted = await call(controller.addCustomerInternalNote, createReq({ body: { body: "VIP renewal discussion." } }));

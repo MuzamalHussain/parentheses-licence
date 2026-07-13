@@ -47,6 +47,8 @@ function safeUser(user) {
     role: user.role,
     companyName: user.companyName,
     emailVerified: user.emailVerified,
+    emailVerifiedAt: user.emailVerifiedAt || null,
+    emailVerificationSource: user.emailVerificationSource || null,
     twoFactorEnabled: user.twoFactorEnabled,
     isActive: user.isActive,
     isSuspended: Boolean(user.isSuspended),
@@ -60,12 +62,13 @@ function safeUser(user) {
 }
 
 async function getCustomerOrThrow(id) {
-  const user = await User.findById(id)
-    .select("name email role companyName emailVerified twoFactorEnabled isActive isSuspended suspendedAt lastLoginAt createdAt updatedAt +internalNotes")
-    .populate("internalNotes.createdBy", "name email role")
-    .lean();
+  const [user, notesDocument] = await Promise.all([
+    User.findById(id).lean(),
+    User.findById(id).select("+internalNotes").lean(),
+  ]);
   if (!user) throw new AppError("User not found.", 404);
-  return user;
+  user.internalNotes = notesDocument?.internalNotes || [];
+  return User.populate(user, { path: "internalNotes.createdBy", select: "name email role" });
 }
 
 async function getMutableUserOrThrow(id, select = "") {
@@ -458,8 +461,13 @@ exports.updateCustomerEmailVerification = asyncHandler(async (req, res) => {
   const previous = Boolean(user.emailVerified);
   user.emailVerified = req.body.emailVerified;
   if (user.emailVerified) {
+    user.emailVerifiedAt = new Date();
+    user.emailVerificationSource = "manual_admin";
     user.emailVerificationToken = undefined;
     user.emailVerificationExpires = undefined;
+  } else {
+    user.emailVerifiedAt = undefined;
+    user.emailVerificationSource = undefined;
   }
 
   await user.save({ validateBeforeSave: false });

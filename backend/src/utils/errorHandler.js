@@ -1,7 +1,8 @@
 class AppError extends Error {
-  constructor(message, statusCode = 500) {
+  constructor(message, statusCode = 500, code = undefined) {
     super(message);
     this.statusCode = statusCode;
+    this.code = code;
     this.isOperational = true;
     Error.captureStackTrace(this, this.constructor);
   }
@@ -68,6 +69,7 @@ const errorHandler = (err, req, res, next) => {
   res.status(statusCode).json({
     success: false,
     message: sanitizeMessage(message),
+    ...(err.code && typeof err.code === "string" ? { code: err.code } : {}),
     requestId: req.id,
   });
 };

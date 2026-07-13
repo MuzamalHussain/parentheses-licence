@@ -171,6 +171,7 @@ function createHarness() {
   };
 
   const UserMock = {
+    async populate(value) { return value; },
     findById(value) {
       return query(store.users.find((user) => id(user._id) === id(value)) || null);
     },

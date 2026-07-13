@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,6 +7,7 @@ import { Eye, EyeOff, CheckCircle } from "lucide-react";
 import AuthLayout from "../../components/AuthLayout";
 import { Input, FormField, Button, Alert } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
+import api from "../../lib/api";
 
 const schema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -28,6 +29,16 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
@@ -38,10 +49,28 @@ export default function RegisterPage() {
     try {
       const payload = { ...values };
       delete payload.confirmPassword;
-      await registerUser(payload);
+      setRegisteredEmail(values.email);
+      const result = await registerUser(payload);
+      setResendMessage(result.data?.emailSent === false ? result.message : "");
+      setCooldown(result.data?.cooldownSeconds || 60);
       setSuccess(true);
     } catch (err) {
       setServerError(err.response?.data?.message || "Registration failed. Please try again.");
+    }
+  };
+
+  const resend = async () => {
+    setResending(true);
+    setResendMessage("");
+    try {
+      const response = await api.post("/auth/resend-verification", { email: registeredEmail });
+      const seconds = response.data?.data?.cooldownSeconds || 60;
+      setResendMessage(response.data?.message || "Verification email sent.");
+      setCooldown(seconds);
+    } catch (err) {
+      setResendMessage(err.response?.data?.message || "Could not resend the verification email.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -53,6 +82,10 @@ export default function RegisterPage() {
           <p className="text-gray-600 text-sm">
             We've sent a verification link to your email address. Please click the link to activate your account.
           </p>
+          <Button variant="secondary" loading={resending} disabled={cooldown > 0} onClick={resend}>
+            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend Verification Email"}
+          </Button>
+          {resendMessage && <p className="text-sm text-gray-600">{resendMessage}</p>}
           <Link to="/login" className="btn-primary inline-flex">
             Back to Sign In
           </Link>

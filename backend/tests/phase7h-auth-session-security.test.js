@@ -52,6 +52,7 @@ function createUser(overrides = {}) {
     loginLockedUntil: overrides.loginLockedUntil,
     emailVerificationToken: overrides.emailVerificationToken,
     emailVerificationExpires: overrides.emailVerificationExpires,
+    emailVerificationLastSentAt: overrides.emailVerificationLastSentAt,
     passwordResetToken: overrides.passwordResetToken,
     passwordResetExpires: overrides.passwordResetExpires,
     async comparePassword(password) {
@@ -155,9 +156,11 @@ function createRes() {
     body: null,
     cookies: {},
     clearedCookies: [],
+    headers: {},
     status(code) { this.statusCode = code; return this; },
     cookie(name, value, options) { this.cookies[name] = { value, options }; return this; },
     clearCookie(name, options) { this.clearedCookies.push({ name, options }); return this; },
+    set(name, value) { this.headers[name] = value; return this; },
     json(payload) { this.body = payload; return this; },
   };
 }
@@ -282,10 +285,44 @@ async function testEmailVerificationOneTimeUse() {
   const first = await call(controller.verifyEmail, createReq({ query: { token: rawToken } }));
   assert.ifError(first.error);
   assert.strictEqual(harness.store.user.emailVerified, true);
+  assert.ok(harness.store.user.emailVerifiedAt);
+  assert.strictEqual(harness.store.user.emailVerificationSource, "email");
   assert.strictEqual(harness.store.user.emailVerificationToken, undefined);
 
   const second = await call(controller.verifyEmail, createReq({ query: { token: rawToken } }));
   assert.strictEqual(second.error.statusCode, 400);
+}
+
+async function testRegistrationSendsVerificationAndPersistsToken() {
+  const harness = createHarness(null);
+  const controller = loadAuthController(harness);
+  const { res, error } = await call(controller.register, createReq({ body: {
+    name: "New Customer",
+    email: "new@example.com",
+    password: "ValidPass123",
+    companyName: "Acme",
+  } }));
+
+  assert.ifError(error);
+  assert.strictEqual(res.statusCode, 201);
+  assert.strictEqual(res.body.data.emailSent, true);
+  assert.ok(harness.store.user.emailVerificationToken);
+  assert.ok(harness.store.user.emailVerificationExpires > new Date());
+  assert.strictEqual(harness.store.sentEmails.length, 1);
+}
+
+async function testResendVerificationAndCooldown() {
+  const harness = createHarness(createUser({ emailVerified: false }));
+  const controller = loadAuthController(harness);
+  const first = await call(controller.resendVerification, createReq({ body: { email: "user@example.com" } }));
+  assert.ifError(first.error);
+  assert.strictEqual(first.res.body.data.cooldownSeconds, 60);
+  assert.strictEqual(harness.store.sentEmails.length, 1);
+
+  const second = await call(controller.resendVerification, createReq({ body: { email: "user@example.com" } }));
+  assert.strictEqual(second.error.statusCode, 429);
+  assert.strictEqual(second.error.code, "VERIFICATION_RESEND_COOLDOWN");
+  assert.ok(Number(second.res.headers["Retry-After"]) > 0);
 }
 
 async function testRequireAuthAndRoleAuthorization() {
@@ -315,6 +352,8 @@ async function run() {
     testLogoutRevokesRefreshSession,
     testPasswordResetClearsTokenAndSessions,
     testEmailVerificationOneTimeUse,
+    testRegistrationSendsVerificationAndPersistsToken,
+    testResendVerificationAndCooldown,
     testRequireAuthAndRoleAuthorization,
   ];
 

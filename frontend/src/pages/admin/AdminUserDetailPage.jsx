@@ -399,6 +399,8 @@ function OverviewTab({ overview }) {
         <div className="grid sm:grid-cols-2 gap-3">
           <DetailItem label="Account status" value={formatLabel(customer.accountStatus || (customer.isActive ? "active" : "inactive"))} />
           <DetailItem label="Email verification" value={customer.emailVerified ? "Verified" : "Unverified"} />
+          <DetailItem label="Verified at" value={formatDate(customer.emailVerifiedAt, true)} />
+          <DetailItem label="Verification source" value={customer.emailVerificationSource === "manual_admin" ? "Manual Admin Verification" : customer.emailVerificationSource === "email" ? "Email Verification" : customer.emailVerificationSource === "api" ? "API" : "-"} />
           <DetailItem label="Active licenses" value={counts.licenses?.active || 0} />
           <DetailItem label="Open tickets" value={counts.supportTickets?.open || 0} />
           <DetailItem label="Audit events" value={counts.auditEvents?.total || 0} />

@@ -14,6 +14,37 @@ const EnterpriseIdentityService = require("../services/identity/EnterpriseIdenti
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync("InvalidPassword123", 12);
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
+
+function assertEmailDelivered(result) {
+  if (result?.success) return;
+  const reason = result?.reason || result?.error || "email_delivery_failed";
+  throw new AppError(
+    reason === "email_not_configured"
+      ? "Verification email service is not configured. Please contact support or try again later."
+      : "We could not send the verification email. Please try again later.",
+    503,
+    "VERIFICATION_EMAIL_FAILED"
+  );
+}
+
+async function sendFreshVerification(user) {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  user.emailVerificationToken = hashToken(rawToken);
+  user.emailVerificationExpires = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+  user.emailVerificationLastSentAt = new Date();
+  await user.save({ validateBeforeSave: false });
+  const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
+  const result = await notificationService.sendVerificationEmail({
+    to: user.email,
+    name: user.name,
+    url: verifyUrl,
+    userId: user._id,
+  });
+  assertEmailDelivered(result);
+  return result;
+}
 
 function parseDurationMs(value, fallbackMs) {
   const match = String(value || "").trim().match(/^(\d+)(ms|s|m|h|d)?$/i);
@@ -158,29 +189,34 @@ exports.register = asyncHandler(async (req, res) => {
   if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
   const passwordHash = await bcrypt.hash(password, 12);
 
-  // Email verification token
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const hashedToken = hashToken(rawToken);
-  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
   const user = await User.create({
     name,
     email,
     passwordHash,
     companyName: companyName || "",
     passwordChangedAt: new Date(),
-    emailVerificationToken: hashedToken,
-    emailVerificationExpires: expires,
   });
-
-  const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
-  await notificationService.sendVerificationEmail({ to: email, name, url: verifyUrl });
-  await auditAuthEvent(req, "auth.registered", user, { emailVerificationSent: true });
+  let emailSent = true;
+  let message = "Account created. Please check your email to verify your account.";
+  try {
+    await sendFreshVerification(user);
+  } catch (err) {
+    emailSent = false;
+    message = "Your account was created, but the verification email could not be sent. Please use resend verification.";
+    await auditAuthEvent(req, "auth.verification_delivery_failed", user, {
+      errorCode: err.code || "VERIFICATION_EMAIL_FAILED",
+    });
+  }
+  await auditAuthEvent(req, "auth.registered", user, { emailVerificationSent: emailSent });
 
   res.status(201).json({
     success: true,
-    message: "Account created. Please check your email to verify your account.",
-    data: user.toSafeJSON(),
+    message,
+    data: {
+      ...user.toSafeJSON(),
+      emailSent,
+      cooldownSeconds: VERIFICATION_RESEND_COOLDOWN_MS / 1000,
+    },
   });
 });
 
@@ -205,6 +241,9 @@ exports.login = asyncHandler(async (req, res) => {
   }
   if (!user.isActive) throw new AppError("Your account has been deactivated. Contact support.", 403);
   if (user.isSuspended) throw new AppError("Your account has been suspended. Contact support.", 403);
+  if (getConfig().features.ENABLE_EMAIL_VERIFICATION_ENFORCEMENT && !user.emailVerified) {
+    throw new AppError("Please verify your email before signing in.", 403, "EMAIL_NOT_VERIFIED");
+  }
   const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
   EnterpriseIdentityService.enforcePolicyForLogin(user, identityPolicy);
 
@@ -340,12 +379,33 @@ exports.verifyEmail = asyncHandler(async (req, res) => {
   if (!user) throw new AppError("Token is invalid or has expired.", 400);
 
   user.emailVerified = true;
+  user.emailVerifiedAt = new Date();
+  user.emailVerificationSource = "email";
   user.emailVerificationToken = undefined;
   user.emailVerificationExpires = undefined;
   await user.save({ validateBeforeSave: false });
   await auditAuthEvent(req, "auth.email_verified", user);
 
   res.json({ success: true, message: "Email verified successfully. You can now log in." });
+});
+
+// POST /api/v1/auth/resend-verification
+exports.resendVerification = asyncHandler(async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const user = await User.findOne({ email }).select("+emailVerificationToken +emailVerificationExpires +emailVerificationLastSentAt");
+  if (!user) throw new AppError("Account not found.", 404, "ACCOUNT_NOT_FOUND");
+  if (user.emailVerified) throw new AppError("This email address is already verified.", 409, "EMAIL_ALREADY_VERIFIED");
+
+  const elapsed = Date.now() - new Date(user.emailVerificationLastSentAt || 0).getTime();
+  if (elapsed < VERIFICATION_RESEND_COOLDOWN_MS) {
+    const retryAfter = Math.ceil((VERIFICATION_RESEND_COOLDOWN_MS - elapsed) / 1000);
+    res.set("Retry-After", String(retryAfter));
+    throw new AppError(`Please wait ${retryAfter} seconds before requesting another email.`, 429, "VERIFICATION_RESEND_COOLDOWN");
+  }
+
+  await sendFreshVerification(user);
+  await auditAuthEvent(req, "auth.verification_resent", user);
+  res.json({ success: true, message: "Verification email sent.", data: { cooldownSeconds: VERIFICATION_RESEND_COOLDOWN_MS / 1000 } });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
