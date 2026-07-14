@@ -132,6 +132,7 @@ async function confirmOrderPaid(orderId, paymentDetails) {
             currency: paymentDetails.currency,
             status: "succeeded",
             rawWebhookPayload: paymentDetails.rawWebhookPayload || {},
+            isTestPayment: Boolean(order.isTestPayment),
           }],
           { session }
         );
@@ -170,6 +171,7 @@ async function confirmOrderPaid(orderId, paymentDetails) {
             allowedSites: plan.allowedSites,
             expiresAt,
             status: "active",
+            isTestLicense: Boolean(order.isTestPayment),
           }],
           { session }
         );

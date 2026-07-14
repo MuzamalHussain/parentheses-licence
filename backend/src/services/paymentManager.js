@@ -143,13 +143,16 @@ async function processWebhookEvent(event, req = null) {
     if (event.action === "payment.succeeded") {
       if (!event.orderId) throw new Error("Payment success event missing order id.");
       assertPaymentMatchesOrder(order, event);
-      await confirmOrderPaid(event.orderId, {
+      const completion = await confirmOrderPaid(event.orderId, {
         gateway: event.provider,
         gatewayTransactionId: event.transactionId,
         amount: event.amount,
         currency: event.currency,
         rawWebhookPayload: event.raw,
       });
+      if (order?.isTestPayment && !completion.alreadyProcessed) {
+        await require("../models/Integration").updateOne({ providerId: event.provider }, { $set: { lastTestCheckoutAt: new Date() } });
+      }
       await auditPayment("payment.completed", event, order, req);
     } else if (event.action === "payment.failed") {
       await recordFailedPayment(event, order);

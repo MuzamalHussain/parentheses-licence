@@ -215,12 +215,15 @@ export const useIntegrationAction = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ providerId, action, body = {} }) =>
-      api.post(`/admin/integrations/${providerId}/${action}`, body).then((r) => r.data),
+      api.post(`/admin/integrations/${providerId}/${action}`, body).then((r) => {
+        if (action === "test" && r.data?.data?.success === false) throw new Error(r.data.data.message || "Connection test failed.");
+        return r.data;
+      }),
     onSuccess: (_, { action }) => {
       toast.success(action === "test" ? "Connection tested." : "Integration updated.");
       qc.invalidateQueries({ queryKey: ["admin-integrations"] });
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Integration action failed."),
+    onError: (err) => toast.error(err.response?.data?.message || err.message || "Integration action failed."),
   });
 };
 

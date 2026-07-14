@@ -137,6 +137,7 @@ const orderSchema = new mongoose.Schema(
     cancelledAt: { type: Date, default: null },
     refundedAt: { type: Date, default: null },
     failureReason: { type: String, default: "" },
+    isTestPayment: { type: Boolean, default: false, index: true },
 
     // Audit: did a customer abandon checkout? Set by the expiry cron (Phase 6).
     expiresAt: {

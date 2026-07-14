@@ -6,10 +6,16 @@ exports.getIntegrations = asyncHandler(async (req, res) => {
     IntegrationManager.installedIntegrations(),
     IntegrationManager.health.getAllHealth(),
   ]);
+  const publicBaseUrl = `${req.protocol}://${req.get("host")}`;
+  const visibleIntegrations = integrations.map((integration) => integration.id === "stripe" ? {
+    ...integration,
+    configuration: { ...integration.configuration, webhookUrl: `${publicBaseUrl}/api/v1/webhooks/stripe` },
+    webhookReadiness: { routeRegistered: true, rawBodyPreserved: true, secretConfigured: Boolean(integration.secretConfigured?.webhookSecret), lastConfirmedAt: integration.lastTestCheckoutAt || null, ready: Boolean(integration.secretConfigured?.webhookSecret && integration.lastTestCheckoutAt) },
+  } : integration);
   res.json({
     success: true,
     data: {
-      integrations,
+      integrations: visibleIntegrations,
       health,
       providers: IntegrationManager.registry.list(),
       api: IntegrationManager.api.getDocumentationMetadata(),

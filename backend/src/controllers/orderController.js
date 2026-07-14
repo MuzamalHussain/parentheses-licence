@@ -108,6 +108,7 @@ exports.createCheckout = asyncHandler(async (req, res) => {
     couponCode: appliedCoupon,
     discountAmount,
     status: "pending",
+    isTestPayment: gateway === "stripe" && integration?.configuration?.environment === "test",
   });
 
   const clientUrl = getConfig().app.clientOrigins[0];
@@ -192,7 +193,8 @@ exports.getMyOrder = asyncHandler(async (req, res) => {
     .populate("licenseId", "licenseKey status")
     .lean();
   if (!order) throw new AppError("Order not found.", 404);
-  res.json({ success: true, data: orderService.orderAccessPayload(order) });
+  const payment = await require("../models/Payment").findOne({ orderId: order._id, status: "succeeded" }).select("gatewayTransactionId").lean();
+  res.json({ success: true, data: { ...orderService.orderAccessPayload(order), providerTransactionId: payment?.gatewayTransactionId || "" } });
 });
 
 exports.retryPayment = asyncHandler(async (req, res) => {

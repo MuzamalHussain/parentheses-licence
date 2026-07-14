@@ -23,6 +23,7 @@ const integrationSchema = new mongoose.Schema(
     lastConnectionTestAt: { type: Date, default: null },
     lastSuccessfulConnectionTestAt: { type: Date, default: null },
     lastConnectionLatencyMs: { type: Number, default: null },
+    lastTestCheckoutAt: { type: Date, default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     lastError: { type: String, default: "" },
     health: {

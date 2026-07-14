@@ -34,6 +34,7 @@ const paymentSchema = new mongoose.Schema(
     providerSessionId: { type: String, default: "", index: true },
     providerEventId: { type: String, default: "" },
     failureReason: { type: String, default: "" },
+    isTestPayment: { type: Boolean, default: false, index: true },
     // Full raw webhook payload — kept for dispute resolution / debugging.
     // Never displayed to the customer; admin-only via the Orders module.
     rawWebhookPayload: {

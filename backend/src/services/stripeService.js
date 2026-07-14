@@ -24,14 +24,22 @@ async function getStripe() {
 
 async function createCheckoutSession({ order, productName, planName, successUrl, cancelUrl, customerEmail }) {
   const { client: stripe, config } = await getStripe();
+  const returnUrl = (configured, fallback, status) => {
+    const target = configured || fallback;
+    if (target.includes("{ORDER_ID}")) return target.replaceAll("{ORDER_ID}", order._id.toString());
+    const url = new URL(target);
+    url.searchParams.set("status", status);
+    url.searchParams.set("orderId", order._id.toString());
+    return url.toString();
+  };
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
     customer_email: customerEmail,
     line_items: [{ price_data: { currency: order.currency.toLowerCase(), product_data: { name: `${productName} - ${planName}` }, unit_amount: Math.round(order.amount * 100) }, quantity: 1 }],
     metadata: { orderId: order._id.toString() },
-    success_url: config.successUrl || successUrl,
-    cancel_url: config.cancelUrl || cancelUrl,
+    success_url: returnUrl(config.successUrl, successUrl, "success"),
+    cancel_url: returnUrl(config.cancelUrl, cancelUrl, "cancelled"),
   });
   return session;
 }

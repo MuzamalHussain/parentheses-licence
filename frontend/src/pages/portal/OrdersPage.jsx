@@ -32,7 +32,7 @@ function RedirectBanner() {
   const { data: order, refetch } = useMyOrder(orderId, { enabled: !!orderId && status === "success" });
 
   useEffect(() => {
-    if (status === "success" && order?.status === "pending" && attempt < 5) {
+    if (status === "success" && ["draft", "pending", "processing"].includes(order?.status) && attempt < 30) {
       const t = setTimeout(() => { refetch(); setAttempt((a) => a + 1); }, 2000);
       return () => clearTimeout(t);
     }
@@ -56,11 +56,11 @@ function RedirectBanner() {
   }
 
   if (status === "success") {
-    if (!order || order.status === "pending") {
+    if (!order || ["draft", "pending", "processing"].includes(order.status)) {
       return (
         <div className="card p-4 flex items-center gap-3 bg-blue-50 border-blue-200">
           <Loader2 className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
-          <p className="text-sm text-blue-800 flex-1">Confirming your payment... this usually takes a few seconds.</p>
+          <p className="text-sm text-blue-800 flex-1">Payment processing. Waiting for the verified Stripe webhook; do not close this page.</p>
         </div>
       );
     }
@@ -70,11 +70,14 @@ function RedirectBanner() {
           <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-green-800 font-medium">Payment successful!</p>
+            {order.isTestPayment && <p className="text-xs font-semibold text-purple-700 mt-0.5">TEST PAYMENT · TEST LICENSE</p>}
             {order.licenseId && (
               <p className="text-xs text-green-700 mt-0.5">
                 License key: <span className="font-mono font-semibold">{order.licenseId.licenseKey}</span>
               </p>
             )}
+            {order.providerTransactionId && <p className="text-xs text-green-700 mt-0.5">Provider transaction: <span className="font-mono">{order.providerTransactionId}</span></p>}
+            <p className="text-xs text-green-700 mt-0.5">Download eligibility: {order.downloadEligible ? "Available" : "Pending"}</p>
           </div>
           <Link to="/dashboard/licenses" className="text-xs text-green-700 hover:underline flex items-center gap-1 flex-shrink-0">
             <Key className="w-3.5 h-3.5" /> View license

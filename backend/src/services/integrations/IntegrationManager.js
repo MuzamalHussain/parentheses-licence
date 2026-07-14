@@ -37,6 +37,7 @@ function publicRecord(record, provider) {
     enabled: Boolean(record?.enabled), lastSync: record?.lastSyncAt || null,
     lastSuccessfulSync: record?.lastSuccessfulSyncAt || null, lastConnectionTestAt: record?.lastConnectionTestAt || null,
     lastSuccessfulConnectionTestAt: record?.lastSuccessfulConnectionTestAt || null,
+    lastTestCheckoutAt: record?.lastTestCheckoutAt || null,
     lastConnectionLatencyMs: record?.lastConnectionLatencyMs ?? null, lastError: record?.lastError || "",
     health: record?.health || { status: "unknown" }, configuration, secretConfigured, configured,
     configurationStatus: configured ? "configured" : "unconfigured", missingFields,

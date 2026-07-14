@@ -39,6 +39,7 @@ const licenseSchema = new mongoose.Schema(
       ref: "Order",
       default: null,
     },
+    isTestLicense: { type: Boolean, default: false, index: true },
     status: {
       type: String,
       enum: ["draft", "pending", "active", "suspended", "expired", "revoked", "cancelled", "trial", "lifetime"],
