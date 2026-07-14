@@ -5,6 +5,7 @@ const PlaceholderPaymentProvider = require("./paymentProviders/PlaceholderPaymen
 class ProviderRegistry {
   constructor() {
     this.providers = new Map();
+    this.legacyProviders = new Map();
   }
 
   register(provider) {
@@ -14,7 +15,7 @@ class ProviderRegistry {
   }
 
   get(providerId) {
-    const provider = this.providers.get(providerId);
+    const provider = this.providers.get(providerId) || this.legacyProviders.get(providerId);
     if (!provider) throw new Error(`Payment provider '${providerId}' is not registered.`);
     return provider;
   }
@@ -22,13 +23,18 @@ class ProviderRegistry {
   list() {
     return Array.from(this.providers.keys());
   }
+
+  registerLegacy(provider) {
+    if (!provider?.id) throw new Error("Legacy payment provider must expose an id.");
+    this.legacyProviders.set(provider.id, provider);
+    return provider;
+  }
 }
 
 const registry = new ProviderRegistry();
 registry.register(new StripePaymentProvider());
-registry.register(new LocalPspPaymentProvider());
-registry.register(new PlaceholderPaymentProvider("paypal"));
-registry.register(new PlaceholderPaymentProvider("lemon_squeezy"));
-registry.register(new PlaceholderPaymentProvider("paddle"));
+registry.register(new PlaceholderPaymentProvider("wise_business"));
+registry.register(new PlaceholderPaymentProvider("hblpay_checkout"));
+registry.registerLegacy(new LocalPspPaymentProvider());
 
 module.exports = { ProviderRegistry, registry };

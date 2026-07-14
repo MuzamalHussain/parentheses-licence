@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -376,10 +376,10 @@ function CustomerManagementPanel({ customer, onOpenTab }) {
           <div className="card p-5">
             <h2 className="font-semibold text-gray-900 mb-4">Quick actions</h2>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => onOpenTab("licenses")} className="btn-secondary justify-center"><Key className="w-4 h-4" /> License</button>
-              <button onClick={() => onOpenTab("orders")} className="btn-secondary justify-center"><ShoppingCart className="w-4 h-4" /> Order</button>
-              <button onClick={() => onOpenTab("support")} className="btn-secondary justify-center"><Ticket className="w-4 h-4" /> Support</button>
-              <button onClick={() => onOpenTab("downloads")} className="btn-secondary justify-center"><Download className="w-4 h-4" /> Download</button>
+              <button type="button" aria-label="Open this customer's licenses" onClick={() => onOpenTab("licenses")} className="btn-secondary justify-center"><Key className="w-4 h-4" /> License</button>
+              <button type="button" aria-label="Open this customer's orders" onClick={() => onOpenTab("orders")} className="btn-secondary justify-center"><ShoppingCart className="w-4 h-4" /> Order</button>
+              <button type="button" aria-label="Open this customer's support tickets" onClick={() => onOpenTab("support")} className="btn-secondary justify-center"><Ticket className="w-4 h-4" /> Support</button>
+              <button type="button" aria-label="Open this customer's downloads" onClick={() => onOpenTab("downloads")} className="btn-secondary justify-center"><Download className="w-4 h-4" /> Download</button>
             </div>
           </div>
         </div>
@@ -788,8 +788,26 @@ function ActivityTab({ customerId }) {
 
 export default function AdminUserDetailPage() {
   const { id } = useParams();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTab = tabs.some((tab) => tab.id === requestedTab) ? requestedTab : "overview";
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const tabContentRef = useRef(null);
   const overviewQuery = useAdminUserOverview(id);
+
+  useEffect(() => {
+    setActiveTab(tabs.some((tab) => tab.id === requestedTab) ? requestedTab : "overview");
+  }, [requestedTab]);
+
+  const openTab = (tabId) => {
+    if (!tabs.some((tab) => tab.id === tabId)) return;
+    const next = new URLSearchParams(searchParams);
+    if (tabId === "overview") next.delete("tab");
+    else next.set("tab", tabId);
+    setSearchParams(next);
+    setActiveTab(tabId);
+    window.requestAnimationFrame(() => tabContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   if (overviewQuery.isLoading) return <LoadingState />;
   if (overviewQuery.error) {
@@ -839,15 +857,15 @@ export default function AdminUserDetailPage() {
             <span className="inline-flex lg:justify-end items-center gap-1"><Calendar className="w-3.5 h-3.5" /> Registered {formatDate(customer.createdAt)}</span>
             <span className="inline-flex lg:justify-end items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Last login {formatDate(customer.lastLoginAt)}</span>
             <div className="sm:col-span-2 flex flex-wrap gap-2 lg:justify-end">
-              <button onClick={() => setActiveTab("licenses")} className="btn-secondary"><Key className="w-4 h-4" /> Licenses</button>
-              <button onClick={() => setActiveTab("orders")} className="btn-secondary"><ShoppingCart className="w-4 h-4" /> Orders</button>
-              <button onClick={() => setActiveTab("support")} className="btn-secondary"><Ticket className="w-4 h-4" /> Support</button>
+              <button type="button" aria-label="Open this customer's licenses" onClick={() => openTab("licenses")} className="btn-secondary"><Key className="w-4 h-4" /> Licenses</button>
+              <button type="button" aria-label="Open this customer's orders" onClick={() => openTab("orders")} className="btn-secondary"><ShoppingCart className="w-4 h-4" /> Orders</button>
+              <button type="button" aria-label="Open this customer's support tickets" onClick={() => openTab("support")} className="btn-secondary"><Ticket className="w-4 h-4" /> Support</button>
             </div>
           </div>
         </div>
       </div>
 
-      <CustomerManagementPanel customer={customer} onOpenTab={setActiveTab} />
+      <CustomerManagementPanel customer={customer} onOpenTab={openTab} />
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard label="Total Licenses" value={counts.licenses?.total} icon={Key} color="text-brand-600 bg-brand-50" />
@@ -858,12 +876,14 @@ export default function AdminUserDetailPage() {
         <StatCard label="Support Tickets" value={counts.supportTickets?.total} icon={Ticket} color="text-yellow-600 bg-yellow-50" />
       </div>
 
-      <div className="border-b border-gray-200 overflow-x-auto">
+      <div ref={tabContentRef} className="border-b border-gray-200 overflow-x-auto scroll-mt-4">
         <div className="flex gap-1 min-w-max">
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              type="button"
+              aria-label={`Open ${tab.label} for ${customer.name}`}
+              onClick={() => openTab(tab.id)}
               className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
                   ? "border-brand-600 text-brand-700"

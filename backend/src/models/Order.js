@@ -65,7 +65,7 @@ const orderSchema = new mongoose.Schema(
     // Which gateway this order is being processed through.
     gateway: {
       type: String,
-      enum: ["stripe", "local", "paypal", "manual", "none"],
+      enum: ["stripe", "wise_business", "hblpay_checkout", "local", "paypal", "manual", "none"],
       default: "none",
     },
     checkoutSessionId: { type: String, default: "", index: true },

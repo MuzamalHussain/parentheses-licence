@@ -10,7 +10,7 @@ router.use(requireAuth);
 const checkoutSchema = z.object({
   productId:  objectIdSchema,
   planId:     objectIdSchema,
-  gateway:    z.enum(["stripe", "local"]),
+  gateway:    z.enum(["stripe", "wise_business", "hblpay_checkout"]),
   couponCode: z.string().max(50).optional(),
 });
 const checkoutFoundationSchema = z.object({
@@ -37,6 +37,7 @@ const checkoutFoundationSchema = z.object({
 });
 
 router.post("/checkout", validate(checkoutSchema), c.createCheckout);
+router.get("/payment-providers", c.getAvailablePaymentProviders);
 router.post("/checkout/session", validate(checkoutFoundationSchema), c.createCheckoutFoundation);
 router.get("/",          c.getMyOrders);
 router.post("/:id/retry-payment", validateRequest({ params: idParamSchema }), c.retryPayment);

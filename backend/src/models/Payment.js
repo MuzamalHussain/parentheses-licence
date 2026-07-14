@@ -10,7 +10,7 @@ const paymentSchema = new mongoose.Schema(
     },
     gateway: {
       type: String,
-      enum: ["stripe", "local", "paypal", "lemon_squeezy", "paddle", "manual"],
+      enum: ["stripe", "wise_business", "hblpay_checkout", "local", "paypal", "lemon_squeezy", "paddle", "manual"],
       required: true,
     },
     gatewayTransactionId: {

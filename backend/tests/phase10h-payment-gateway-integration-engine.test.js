@@ -128,7 +128,7 @@ async function testStripeWebhookCompletesOrder() {
     },
   };
   const manager = loadManager(store);
-  const event = manager.parseWebhookEvent("stripe", { rawBody: Buffer.from("{}"), headers: { "stripe-signature": "valid" } });
+  const event = await manager.parseWebhookEvent("stripe", { rawBody: Buffer.from("{}"), headers: { "stripe-signature": "valid" } });
   await manager.processWebhookEvent(event);
   assert.strictEqual(store.confirmed.length, 1);
   assert.strictEqual(store.confirmed[0].details.gateway, "stripe");
@@ -146,7 +146,7 @@ async function testDuplicateWebhookSkipped() {
     },
   };
   const manager = loadManager(store);
-  const event = manager.parseWebhookEvent("stripe", { rawBody: Buffer.from("{}"), headers: { "stripe-signature": "valid" } });
+  const event = await manager.parseWebhookEvent("stripe", { rawBody: Buffer.from("{}"), headers: { "stripe-signature": "valid" } });
   const result = await manager.processWebhookEvent(event);
   assert.strictEqual(result.duplicate, true);
   assert.strictEqual(store.confirmed.length, 0);
@@ -186,7 +186,7 @@ async function testPaymentFailureAndRefund() {
     },
   };
   const manager = loadManager(store);
-  let event = manager.parseWebhookEvent("stripe", { rawBody: Buffer.from("{}"), headers: { "stripe-signature": "valid" } });
+  let event = await manager.parseWebhookEvent("stripe", { rawBody: Buffer.from("{}"), headers: { "stripe-signature": "valid" } });
   await manager.processWebhookEvent(event);
   assert.strictEqual(store.orders.order_1.paymentStatus, "failed");
 
@@ -209,10 +209,10 @@ function testProviderRegistryFutureProviders() {
   const manager = loadManager();
   const providers = manager.registry.list();
   assert.ok(providers.includes("stripe"));
-  assert.ok(providers.includes("local"));
-  assert.ok(providers.includes("paypal"));
-  assert.ok(providers.includes("lemon_squeezy"));
-  assert.ok(providers.includes("paddle"));
+  assert.ok(providers.includes("wise_business"));
+  assert.ok(providers.includes("hblpay_checkout"));
+  assert.ok(!providers.includes("local"));
+  assert.ok(!providers.includes("paypal"));
 }
 
 async function run() {

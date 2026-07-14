@@ -19,10 +19,13 @@ function testCompleteCatalogAndSecretMetadata() {
   for (const category of ["General", "Payments", "Email", "AI Providers", "Storage", "SMS", "Webhooks", "Developer", "Security"]) {
     assert.ok(catalog.CATEGORIES.includes(category));
   }
-  for (const id of ["stripe", "wise", "jazzcash", "easypaisa", "smtp", "mailtrap", "resend", "sendgrid", "amazon_ses", "openai", "anthropic", "gemini", "groq", "openrouter", "azure_openai", "storage_local", "storage_s3", "storage_r2", "storage_azure_blob", "storage_gcs", "twilio", "vonage", "global_webhooks", "github", "gitlab", "bitbucket"]) {
+  for (const id of ["stripe", "wise_business", "hblpay_checkout", "smtp", "mailtrap", "resend", "sendgrid", "amazon_ses", "openai", "anthropic", "gemini", "groq", "openrouter", "azure_openai", "storage_local", "storage_s3", "storage_r2", "storage_azure_blob", "storage_gcs", "twilio", "vonage", "global_webhooks", "github", "gitlab", "bitbucket"]) {
     assert.ok(registry.get(id));
   }
   assert.ok(catalog.get("stripe").fields.find((field) => field.key === "secretKey").secret);
+  assert.strictEqual(catalog.get("jazzcash"), undefined);
+  assert.strictEqual(catalog.get("easypaisa"), undefined);
+  assert.strictEqual(catalog.get("bank_transfer"), undefined);
 }
 
 testAuthenticatedEncryption();

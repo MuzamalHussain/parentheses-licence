@@ -4,7 +4,7 @@ const { logError } = require("../utils/logger");
 async function handleStripeWebhook(req, res) {
   let event;
   try {
-    event = paymentManager.parseWebhookEvent("stripe", {
+    event = await paymentManager.parseWebhookEvent("stripe", {
       rawBody: req.body,
       headers: req.headers,
     });

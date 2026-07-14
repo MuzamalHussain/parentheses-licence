@@ -4,12 +4,40 @@ const Plan = require("../models/Plan");
 const Product = require("../models/Product");
 const { AppError } = require("../utils/errorHandler");
 const { computeCheckoutAmount } = require("../services/paymentService");
-const { assertProviderOperational } = require("../services/paymentProviderStatus");
+const Integration = require("../models/Integration");
 const { getConfig } = require("../config/env");
 const { getPagination, paginationMeta } = require("../utils/pagination");
 const performanceConfig = require("../config/performance");
 const orderService = require("../services/orderService");
 const paymentManager = require("../services/paymentManager");
+
+const PAYMENT_PROVIDERS = {
+  stripe: { name: "Stripe Checkout", currencies: ["USD", "PKR", "EUR", "GBP"], automaticCheckout: true },
+  wise_business: { name: "Wise Business", currencies: ["USD", "PKR", "EUR", "GBP"], automaticCheckout: false },
+  hblpay_checkout: { name: "HBLPay Checkout", currencies: ["PKR"], automaticCheckout: false },
+};
+
+async function providerAvailability(providerId) {
+  const definition = PAYMENT_PROVIDERS[providerId];
+  if (!definition) return null;
+  const integration = await Integration.findOne({ providerId }).lean();
+  const available = Boolean(definition.automaticCheckout && integration?.enabled && integration?.status === "connected" && integration?.health?.status === "ok");
+  return { id: providerId, ...definition, available, status: integration?.status || "unconfigured",
+    message: available ? "Available" : providerId === "wise_business" ? "Automatic customer payment confirmation is not available for this Wise configuration." : providerId === "hblpay_checkout" ? "HBLPay merchant callback verification is not yet approved." : "Provider is not configured, healthy, and enabled." };
+}
+
+async function assertCheckoutEligible(providerId) {
+  const status = await providerAvailability(providerId);
+  if (!status) throw new AppError("Unsupported payment provider.", 422, "PROVIDER_NOT_CONFIGURED");
+  if (!status.automaticCheckout) throw new AppError(status.message, 409, "PROVIDER_CAPABILITY_UNAVAILABLE");
+  if (!status.available) throw new AppError(status.message, 503, "PROVIDER_UNHEALTHY");
+  return status;
+}
+
+exports.getAvailablePaymentProviders = asyncHandler(async (req, res) => {
+  const providers = await Promise.all(Object.keys(PAYMENT_PROVIDERS).map(providerAvailability));
+  res.json({ success: true, data: providers.filter((provider) => provider.available).map(({ id, name, currencies }) => ({ id, name, currencies })) });
+});
 
 exports.createCheckoutFoundation = asyncHandler(async (req, res) => {
   const order = await orderService.createCheckoutOrder({
@@ -47,11 +75,7 @@ exports.createCheckoutFoundation = asyncHandler(async (req, res) => {
 exports.createCheckout = asyncHandler(async (req, res) => {
   const { productId, planId, gateway, couponCode } = req.body;
 
-  if (!["stripe", "local"].includes(gateway)) {
-    throw new AppError("gateway must be 'stripe' or 'local'.", 422);
-  }
-
-  assertProviderOperational(gateway);
+  await assertCheckoutEligible(gateway);
 
   const [product, plan] = await Promise.all([
     Product.findById(productId),
@@ -63,7 +87,9 @@ exports.createCheckout = asyncHandler(async (req, res) => {
   // Stripe is charged in USD; the local PSP is charged in PKR — currency
   // follows the chosen gateway, not customer preference, since each
   // gateway only settles in one currency for this MVP.
-  const currency = gateway === "stripe" ? "USD" : "PKR";
+  const integration = await Integration.findOne({ providerId: gateway }).lean();
+  const currency = PAYMENT_PROVIDERS[gateway].currencies.includes(integration?.configuration?.currency)
+    ? integration.configuration.currency : gateway === "hblpay_checkout" ? "PKR" : "USD";
 
   const { amount, discountAmount, couponCode: appliedCoupon } =
     await computeCheckoutAmount({ plan, currency, couponCode });
@@ -177,11 +203,11 @@ exports.retryPayment = asyncHandler(async (req, res) => {
   if (!["draft", "pending", "failed", "cancelled", "expired"].includes(order.status)) {
     throw new AppError("This order cannot be retried.", 400);
   }
-  if (!["stripe", "local"].includes(order.gateway)) {
+  if (!Object.prototype.hasOwnProperty.call(PAYMENT_PROVIDERS, order.gateway)) {
     throw new AppError("This order does not have a retryable payment provider.", 400);
   }
 
-  assertProviderOperational(order.gateway);
+  await assertCheckoutEligible(order.gateway);
   const clientUrl = getConfig().app.clientOrigins[0];
   const successUrl = `${clientUrl}/dashboard/orders?status=success&orderId=${order._id}`;
   const cancelUrl = `${clientUrl}/dashboard/orders?status=cancelled&orderId=${order._id}`;

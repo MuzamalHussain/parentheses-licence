@@ -5,7 +5,7 @@ const integrationSchema = new mongoose.Schema(
     providerId: { type: String, required: true, unique: true, trim: true, lowercase: true },
     name: { type: String, required: true, trim: true },
     category: { type: String, default: "General", index: true },
-    environment: { type: String, enum: ["sandbox", "live", "default"], default: "default" },
+    environment: { type: String, enum: ["test", "sandbox", "live", "default"], default: "default" },
     version: { type: String, default: "0.1.0" },
     status: {
       type: String,
@@ -23,6 +23,7 @@ const integrationSchema = new mongoose.Schema(
     lastConnectionTestAt: { type: Date, default: null },
     lastSuccessfulConnectionTestAt: { type: Date, default: null },
     lastConnectionLatencyMs: { type: Number, default: null },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     lastError: { type: String, default: "" },
     health: {
       status: { type: String, enum: ["ok", "degraded", "error", "unknown"], default: "unknown" },

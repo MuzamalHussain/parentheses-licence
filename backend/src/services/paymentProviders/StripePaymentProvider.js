@@ -17,8 +17,8 @@ class StripePaymentProvider extends PaymentProviderInterface {
     };
   }
 
-  parseWebhookEvent({ rawBody, headers }) {
-    const event = constructWebhookEvent(rawBody, headers["stripe-signature"]);
+  async parseWebhookEvent({ rawBody, headers }) {
+    const event = await constructWebhookEvent(rawBody, headers["stripe-signature"]);
     const base = {
       provider: this.id,
       eventId: event.id,
