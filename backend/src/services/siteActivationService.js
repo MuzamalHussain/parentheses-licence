@@ -10,6 +10,7 @@ const {
   isStagingDomain,
 } = require("../utils/domain");
 const { writeAuditLog } = require("../utils/auditLog");
+const { maskLicenseKey } = require("../utils/licenseKey");
 
 const SITE_STATUSES = ["active", "inactive", "disconnected", "suspended", "revoked", "expired"];
 const ENVIRONMENTS = ["production", "staging", "development", "localhost", "unknown"];
@@ -32,7 +33,7 @@ function normalizeSiteUrl(raw) {
 function detectEnvironment({ domain, siteUrl = "", environment = "" }) {
   const requested = String(environment || "").trim().toLowerCase();
   if (ENVIRONMENTS.includes(requested) && requested !== "unknown") return requested;
-  const normalized = normalizeDomain(domain || siteUrl, { stripWww: true });
+  const normalized = normalizeDomain(domain || siteUrl);
   if (isLocalhostDomain(normalized) || isPrivateHost(normalized)) return "localhost";
   if (isStagingDomain(normalized)) return "staging";
   if (/\b(dev|development)\b/i.test(siteUrl)) return "development";
@@ -41,7 +42,7 @@ function detectEnvironment({ domain, siteUrl = "", environment = "" }) {
 
 function normalizedActivationInput(input = {}) {
   const siteUrl = normalizeSiteUrl(input.siteUrl || input.site_url || input.url || input.domain);
-  const domain = normalizeDomain(input.domain || siteUrl, { stripWww: true });
+  const domain = normalizeDomain(input.domain || siteUrl);
   return {
     siteName: String(input.siteName || input.site_name || input.name || "").trim(),
     siteUrl,
@@ -66,7 +67,7 @@ async function audit({ actor, action, license, site, req, metadata = {} }) {
     targetId: site?._id || license?._id || null,
     metadata: {
       licenseId: license?._id,
-      licenseKey: license?.licenseKey,
+      licenseKey: maskLicenseKey(license?.licenseKey),
       domain: site?.domain,
       ...metadata,
     },
@@ -76,13 +77,21 @@ async function audit({ actor, action, license, site, req, metadata = {} }) {
 
 async function syncActiveDomain({ licenseId, domain, active }) {
   if (active) {
+    const license = await License.findById(licenseId).select("activeDomains").lean();
+    if (license?.activeDomains?.some((entry) => normalizeDomain(entry.domain) === domain)) return;
     await License.findOneAndUpdate(
       { _id: licenseId, "activeDomains.domain": { $ne: domain } },
       { $push: { activeDomains: { domain, activatedAt: new Date() } } },
       { new: true }
     );
   } else {
-    await License.findByIdAndUpdate(licenseId, { $pull: { activeDomains: { domain } } });
+    const license = await License.findById(licenseId).select("activeDomains").lean();
+    const storedDomains = (license?.activeDomains || [])
+      .filter((entry) => normalizeDomain(entry.domain) === domain)
+      .map((entry) => entry.domain);
+    if (storedDomains.length) {
+      await License.findByIdAndUpdate(licenseId, { $pull: { activeDomains: { domain: { $in: storedDomains } } } });
+    }
   }
 }
 
@@ -176,7 +185,7 @@ async function validateSite({ license, input, req = null }) {
 }
 
 async function deactivateSite({ license, domain, actor = null, actorRole = "customer", req = null, force = false }) {
-  const normalizedDomain = normalizeDomain(domain, { stripWww: true });
+  const normalizedDomain = normalizeDomain(domain);
   ensureValidDomain(normalizedDomain);
   const site = await LicenseSite.findOne({ licenseId: license._id, domain: normalizedDomain });
   if (!site) throw new AppError("Site is not activated on this license.", 404);
@@ -198,7 +207,7 @@ async function deactivateSite({ license, domain, actor = null, actorRole = "cust
 }
 
 async function renameSite({ license, domain, siteName, actor = null, actorRole = "customer", req = null }) {
-  const normalizedDomain = normalizeDomain(domain, { stripWww: true });
+  const normalizedDomain = normalizeDomain(domain);
   const site = await LicenseSite.findOne({ licenseId: license._id, domain: normalizedDomain });
   if (!site) throw new AppError("Site is not activated on this license.", 404);
   site.siteName = String(siteName || "").trim().slice(0, 150) || site.siteName;
@@ -212,7 +221,7 @@ async function adminSiteAction({ license, domain, action, actor, req, siteName }
   if (action === "deactivate") return deactivateSite({ license, domain, actor, actorRole: "admin", req });
   if (action === "force_deactivate") return deactivateSite({ license, domain, actor, actorRole: "admin", req, force: true });
 
-  const normalizedDomain = normalizeDomain(domain, { stripWww: true });
+  const normalizedDomain = normalizeDomain(domain);
   const site = await LicenseSite.findOne({ licenseId: license._id, domain: normalizedDomain });
   if (!site) throw new AppError("Site is not activated on this license.", 404);
   if (action === "suspend") {

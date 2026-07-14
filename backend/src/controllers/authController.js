@@ -7,7 +7,7 @@ const { AppError } = require("../utils/errorHandler");
 const notificationService = require("../services/notificationService");
 const { getConfig } = require("../config/env");
 const { writeAuditLog } = require("../utils/auditLog");
-const { logWarn } = require("../utils/logger");
+const { logInfo, logWarn, logError } = require("../utils/logger");
 const { getSessionClient } = require("../utils/sessionSecurity");
 const EnterpriseIdentityService = require("../services/identity/EnterpriseIdentityService");
 
@@ -29,19 +29,60 @@ function assertEmailDelivered(result) {
   );
 }
 
-async function sendFreshVerification(user) {
+function maskRecipient(email = "") {
+  const [local, domain] = String(email).split("@");
+  if (!domain) return "invalid-recipient";
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function verificationLogContext(user, source) {
+  const config = getConfig();
+  return {
+    source,
+    recipient: maskRecipient(user.email),
+    provider: config.email.provider,
+    smtpHost: config.email.host,
+    smtpPort: config.email.port,
+    secure: config.email.secure,
+  };
+}
+
+async function sendFreshVerification(user, source) {
   const rawToken = crypto.randomBytes(32).toString("hex");
   user.emailVerificationToken = hashToken(rawToken);
   user.emailVerificationExpires = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
   user.emailVerificationLastSentAt = new Date();
   await user.save({ validateBeforeSave: false });
+  const logContext = verificationLogContext(user, source);
+  logInfo("verification.token_created", { ...logContext, expiresAt: user.emailVerificationExpires });
   const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
-  const result = await notificationService.sendVerificationEmail({
-    to: user.email,
-    name: user.name,
-    url: verifyUrl,
-    userId: user._id,
-  });
+  logInfo("verification.email_send_started", logContext);
+  let result;
+  try {
+    result = await notificationService.sendVerificationEmail({
+      to: user.email,
+      name: user.name,
+      url: verifyUrl,
+      userId: user._id,
+    });
+  } catch (err) {
+    user.emailVerificationLastStatus = "failed";
+    await user.save({ validateBeforeSave: false });
+    logError("verification.email_send_failed", { ...logContext, errorCode: err.code || "EMAIL_SEND_FAILED", errorMessage: err.message });
+    throw err;
+  }
+  user.emailVerificationLastStatus = result?.success ? "sent" : "failed";
+  await user.save({ validateBeforeSave: false });
+  if (result?.success) {
+    logInfo("verification.email_send_succeeded", { ...logContext, messageId: result.messageId || "", attempts: result.attempts });
+  } else {
+    logError("verification.email_send_failed", {
+      ...logContext,
+      errorCode: result?.errorCode || result?.reason || "EMAIL_SEND_FAILED",
+      errorMessage: result?.error || result?.reason || "Email delivery failed",
+      attempts: result?.attempts,
+    });
+  }
   assertEmailDelivered(result);
   return result;
 }
@@ -180,6 +221,7 @@ function revokeRefreshSession(user, sessionId) {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.register = asyncHandler(async (req, res) => {
   const { name, email, password, companyName } = req.body;
+  logInfo("verification.request_received", { source: "registration", recipient: maskRecipient(email) });
 
   const existing = await User.findOne({ email });
   if (existing) throw new AppError("An account with this email already exists.", 409);
@@ -199,7 +241,7 @@ exports.register = asyncHandler(async (req, res) => {
   let emailSent = true;
   let message = "Account created. Please check your email to verify your account.";
   try {
-    await sendFreshVerification(user);
+    await sendFreshVerification(user, "registration");
   } catch (err) {
     emailSent = false;
     message = "Your account was created, but the verification email could not be sent. Please use resend verification.";
@@ -208,6 +250,7 @@ exports.register = asyncHandler(async (req, res) => {
     });
   }
   await auditAuthEvent(req, "auth.registered", user, { emailVerificationSent: emailSent });
+  logInfo("verification.request_completed", { source: "registration", recipient: maskRecipient(email), emailSent });
 
   res.status(201).json({
     success: true,
@@ -392,20 +435,30 @@ exports.verifyEmail = asyncHandler(async (req, res) => {
 // POST /api/v1/auth/resend-verification
 exports.resendVerification = asyncHandler(async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
-  const user = await User.findOne({ email }).select("+emailVerificationToken +emailVerificationExpires +emailVerificationLastSentAt");
-  if (!user) throw new AppError("Account not found.", 404, "ACCOUNT_NOT_FOUND");
-  if (user.emailVerified) throw new AppError("This email address is already verified.", 409, "EMAIL_ALREADY_VERIFIED");
+  logInfo("verification.request_received", { source: "resend", recipient: maskRecipient(email) });
+  const user = await User.findOne({ email }).select("+emailVerificationToken +emailVerificationExpires +emailVerificationLastSentAt +emailVerificationLastStatus");
+  if (!user || user.emailVerified) {
+    logInfo("verification.request_completed", { source: "resend", recipient: maskRecipient(email), status: "safe_acknowledgement" });
+    return res.json({ success: true, message: "If that account requires verification, a verification email will be sent." });
+  }
 
   const elapsed = Date.now() - new Date(user.emailVerificationLastSentAt || 0).getTime();
   if (elapsed < VERIFICATION_RESEND_COOLDOWN_MS) {
     const retryAfter = Math.ceil((VERIFICATION_RESEND_COOLDOWN_MS - elapsed) / 1000);
     res.set("Retry-After", String(retryAfter));
+    logInfo("verification.request_completed", { source: "resend", recipient: maskRecipient(email), status: "cooldown", retryAfter });
     throw new AppError(`Please wait ${retryAfter} seconds before requesting another email.`, 429, "VERIFICATION_RESEND_COOLDOWN");
   }
 
-  await sendFreshVerification(user);
-  await auditAuthEvent(req, "auth.verification_resent", user);
-  res.json({ success: true, message: "Verification email sent.", data: { cooldownSeconds: VERIFICATION_RESEND_COOLDOWN_MS / 1000 } });
+  try {
+    await sendFreshVerification(user, "resend");
+    await auditAuthEvent(req, "auth.verification_resent", user);
+    logInfo("verification.request_completed", { source: "resend", recipient: maskRecipient(email), status: "sent" });
+    return res.json({ success: true, message: "Verification email sent.", data: { cooldownSeconds: VERIFICATION_RESEND_COOLDOWN_MS / 1000 } });
+  } catch (err) {
+    logError("verification.request_completed", { source: "resend", recipient: maskRecipient(email), status: "failed", errorCode: err.code || "VERIFICATION_EMAIL_FAILED" });
+    throw err;
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

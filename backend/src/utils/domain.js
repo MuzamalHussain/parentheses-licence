@@ -7,7 +7,7 @@ const { domainToASCII } = require("url");
  *  1. Lowercase
  *  2. Strip protocol (http:// https://)
  *  3. Strip trailing slash
- *  4. Strip www. prefix (optional — disabled by default; set stripWww=true to enable)
+ *  4. Strip www. prefix by default (the established activation policy)
  *  5. Strip port (443 and 80 stripped; others kept so staging.site:8080 ≠ staging.site)
  *
  * Examples:
@@ -15,7 +15,7 @@ const { domainToASCII } = require("url");
  *   "http://mysite.com:80"      → "mysite.com"
  *   "staging.site:8080"         → "staging.site:8080"
  */
-function normalizeDomain(raw, { stripWww = false } = {}) {
+function normalizeDomain(raw, { stripWww = true } = {}) {
   if (!raw || typeof raw !== "string") return "";
 
   let domain = raw.trim().toLowerCase();

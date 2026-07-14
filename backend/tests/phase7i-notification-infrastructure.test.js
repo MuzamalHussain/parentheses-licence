@@ -175,6 +175,28 @@ async function testQueueDispatch() {
   queue.resetNotificationQueueForTests();
 }
 
+async function testHangingProviderReturnsWithinConfiguredTimeout() {
+  const { service } = loadService();
+  service.setNotificationProviderForTests({
+    name: "hanging-provider",
+    async send() {
+      return new Promise(() => {});
+    },
+  });
+
+  const startedAt = Date.now();
+  const result = await service.sendVerificationEmail({
+    to: "ada@example.test",
+    name: "Ada",
+    url: "https://app.example.test/verify",
+  });
+
+  assert.strictEqual(result.success, false);
+  assert.strictEqual(result.errorCode, "EMAIL_SEND_TIMEOUT");
+  assert.ok(Date.now() - startedAt < 1500);
+  service.resetNotificationServiceForTests();
+}
+
 async function testLoggingOmitsSecretsAndTokens() {
   const { service } = loadService();
   const logger = createLogger();
@@ -243,6 +265,7 @@ async function run() {
     testRetryLogicEventuallySucceeds,
     testFailedSmtpDoesNotThrow,
     testQueueDispatch,
+    testHangingProviderReturnsWithinConfiguredTimeout,
     testLoggingOmitsSecretsAndTokens,
     testProviderDiagnostics,
     testSendTestEmail,

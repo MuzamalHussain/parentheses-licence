@@ -49,6 +49,8 @@ function safeUser(user) {
     emailVerified: user.emailVerified,
     emailVerifiedAt: user.emailVerifiedAt || null,
     emailVerificationSource: user.emailVerificationSource || null,
+    emailVerificationLastSentAt: user.emailVerificationLastSentAt || null,
+    emailVerificationLastStatus: user.emailVerificationLastStatus || null,
     twoFactorEnabled: user.twoFactorEnabled,
     isActive: user.isActive,
     isSuspended: Boolean(user.isSuspended),
@@ -64,10 +66,12 @@ function safeUser(user) {
 async function getCustomerOrThrow(id) {
   const [user, notesDocument] = await Promise.all([
     User.findById(id).lean(),
-    User.findById(id).select("+internalNotes").lean(),
+    User.findById(id).select("+internalNotes +emailVerificationLastSentAt +emailVerificationLastStatus").lean(),
   ]);
   if (!user) throw new AppError("User not found.", 404);
   user.internalNotes = notesDocument?.internalNotes || [];
+  user.emailVerificationLastSentAt = notesDocument?.emailVerificationLastSentAt || null;
+  user.emailVerificationLastStatus = notesDocument?.emailVerificationLastStatus || null;
   return User.populate(user, { path: "internalNotes.createdBy", select: "name email role" });
 }
 
@@ -481,6 +485,37 @@ exports.updateCustomerEmailVerification = asyncHandler(async (req, res) => {
     message: user.emailVerified ? "Email marked verified." : "Email marked unverified.",
     data: safeUser(user),
   });
+});
+
+// POST /api/v1/admin/users/:id/resend-verification
+exports.resendCustomerVerification = asyncHandler(async (req, res) => {
+  const user = await getMutableUserOrThrow(
+    req.params.id,
+    "+emailVerificationToken +emailVerificationExpires +emailVerificationLastSentAt +emailVerificationLastStatus"
+  );
+  if (user.emailVerified) throw new AppError("This email address is already verified.", 409, "EMAIL_ALREADY_VERIFIED");
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  user.emailVerificationToken = hashToken(rawToken);
+  user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  user.emailVerificationLastSentAt = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  const verifyUrl = `${getConfig().app.clientOrigins[0]}/verify-email?token=${rawToken}`;
+  const notification = await notificationService.sendVerificationEmail({
+    to: user.email,
+    name: user.name,
+    url: verifyUrl,
+    userId: user._id,
+  });
+  user.emailVerificationLastStatus = notification?.success ? "sent" : "failed";
+  await user.save({ validateBeforeSave: false });
+  await auditAdminUserEvent(req, notification?.success ? "admin.user.verification_resent" : "admin.user.verification_resend_failed", user);
+
+  if (!notification?.success) {
+    throw new AppError("Verification email could not be sent.", 503, "VERIFICATION_EMAIL_FAILED");
+  }
+  res.json({ success: true, message: "Verification email sent.", data: safeUser(user) });
 });
 
 // POST /api/v1/admin/users/:id/force-password-reset

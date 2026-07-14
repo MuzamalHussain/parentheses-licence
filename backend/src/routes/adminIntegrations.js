@@ -10,11 +10,7 @@ const providerParamSchema = z.object({
 });
 
 const configureSchema = z.object({
-  configuration: z.object({
-    webhookUrl: z.string().url().optional(),
-    signingSecret: z.string().min(16).max(200).optional(),
-    webhookEvents: z.array(z.string().max(100)).max(30).optional(),
-  }).passthrough().optional(),
+  configuration: z.record(z.any()).optional(),
 });
 
 const enabledSchema = z.object({ enabled: z.boolean() });

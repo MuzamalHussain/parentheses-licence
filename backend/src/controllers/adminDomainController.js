@@ -143,10 +143,13 @@ exports.forceDeactivateDomain = asyncHandler(async (req, res) => {
 
   const domainLower = normalizeDomain(domain);
   if (!isValidDomain(domainLower)) throw new AppError("Invalid domain format.", 422);
+  const storedDomains = license.activeDomains
+    .filter((entry) => normalizeDomain(entry.domain) === domainLower)
+    .map((entry) => entry.domain);
 
   const updatedLicense = await License.findOneAndUpdate(
-    { _id: license._id, "activeDomains.domain": domainLower },
-    { $pull: { activeDomains: { domain: domainLower } } },
+    { _id: license._id, "activeDomains.domain": { $in: storedDomains } },
+    { $pull: { activeDomains: { domain: { $in: storedDomains } } } },
     { new: true }
   );
   if (!updatedLicense) throw new AppError("Domain is not activated on this license.", 404);

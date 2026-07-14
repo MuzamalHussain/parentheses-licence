@@ -5,6 +5,7 @@ process.env.NODE_ENV = "test";
 process.env.MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/parentheses_test";
 process.env.JWT_ACCESS_SECRET = "phase12a_test_access_secret_with_enough_entropy";
 process.env.JWT_REFRESH_SECRET = "phase12a_test_refresh_secret_with_enough_entropy";
+process.env.APP_ENCRYPTION_KEY = "phase12a_test_encryption_key_with_enough_entropy";
 
 const root = path.resolve(__dirname, "..");
 

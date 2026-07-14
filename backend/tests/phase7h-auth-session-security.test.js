@@ -325,6 +325,41 @@ async function testResendVerificationAndCooldown() {
   assert.ok(Number(second.res.headers["Retry-After"]) > 0);
 }
 
+async function testRegistrationCompletesWhenEmailDeliveryFails() {
+  const harness = createHarness(null);
+  harness.mocks.notificationServiceMock.sendVerificationEmail = async () => ({
+    success: false,
+    error: "Invalid login",
+    errorCode: "EAUTH",
+  });
+  const controller = loadAuthController(harness);
+  const { res, error } = await call(controller.register, createReq({ body: {
+    name: "New Customer",
+    email: "new@example.com",
+    password: "ValidPass123",
+  } }));
+
+  assert.ifError(error);
+  assert.strictEqual(res.statusCode, 201);
+  assert.strictEqual(res.body.data.emailSent, false);
+  assert.strictEqual(harness.store.user.emailVerificationLastStatus, "failed");
+}
+
+async function testResendReturnsControlledFailure() {
+  const harness = createHarness(createUser({ emailVerified: false }));
+  harness.mocks.notificationServiceMock.sendVerificationEmail = async () => ({
+    success: false,
+    error: "Email send timed out after 1000ms",
+    errorCode: "EMAIL_SEND_TIMEOUT",
+  });
+  const controller = loadAuthController(harness);
+  const { error } = await call(controller.resendVerification, createReq({ body: { email: "user@example.com" } }));
+
+  assert.strictEqual(error.statusCode, 503);
+  assert.strictEqual(error.code, "VERIFICATION_EMAIL_FAILED");
+  assert.strictEqual(harness.store.user.emailVerificationLastStatus, "failed");
+}
+
 async function testRequireAuthAndRoleAuthorization() {
   const harness = createHarness(createUser({ role: "customer" }));
   loadAuthController(harness);
@@ -354,6 +389,8 @@ async function run() {
     testEmailVerificationOneTimeUse,
     testRegistrationSendsVerificationAndPersistsToken,
     testResendVerificationAndCooldown,
+    testRegistrationCompletesWhenEmailDeliveryFails,
+    testResendReturnsControlledFailure,
     testRequireAuthAndRoleAuthorization,
   ];
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,6 +25,7 @@ export default function LoginPage() {
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const resendInFlight = useRef(false);
   const from = location.state?.from?.pathname;
 
   useEffect(() => {
@@ -52,16 +53,19 @@ export default function LoginPage() {
   };
 
   const resend = async () => {
+    if (resendInFlight.current) return;
+    resendInFlight.current = true;
     setResending(true);
     setResendMessage("");
     try {
-      const response = await api.post("/auth/resend-verification", { email: unverifiedEmail });
+      const response = await api.post("/auth/resend-verification", { email: unverifiedEmail }, { timeout: 15000 });
       const seconds = response.data?.data?.cooldownSeconds || 60;
       setResendMessage(response.data?.message || "Verification email sent.");
       setCooldown(seconds);
     } catch (err) {
-      setResendMessage(err.response?.data?.message || "Could not resend the verification email.");
+      setResendMessage(err.code === "ECONNABORTED" ? "The email request timed out. Please try again." : err.response?.data?.message || "Could not resend the verification email.");
     } finally {
+      resendInFlight.current = false;
       setResending(false);
     }
   };
@@ -72,7 +76,7 @@ export default function LoginPage() {
         <Alert type="error" message={serverError} />
         {unverifiedEmail && (
           <div className="space-y-2">
-            <Button type="button" variant="secondary" loading={resending} disabled={cooldown > 0} onClick={resend} className="w-full">
+            <Button type="button" variant="secondary" loading={resending} disabled={resending || cooldown > 0} onClick={resend} className="w-full">
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend Verification Email"}
             </Button>
             {resendMessage && <p className="text-center text-sm text-gray-600">{resendMessage}</p>}

@@ -4,6 +4,7 @@ const Plan = require("../models/Plan");
 const User = require("../models/User");
 const { AppError } = require("../utils/errorHandler");
 const { normalizeDomain, isValidDomain } = require("../utils/domain");
+const { maskLicenseKey } = require("../utils/licenseKey");
 const { writeAuditLog } = require("../utils/auditLog");
 const licenseEngineConfig = require("../config/licenseEngine");
 
@@ -96,7 +97,7 @@ async function markExpiredIfNeeded(license) {
     action: "license.expired",
     targetType: "License",
     targetId: license._id,
-    metadata: { licenseKey: license.licenseKey, expiresAt: license.expiresAt, automatic: true },
+    metadata: { licenseKey: maskLicenseKey(license.licenseKey), expiresAt: license.expiresAt, automatic: true },
   });
   return license;
 }
@@ -114,7 +115,7 @@ async function audit({ actor, action, license, req, metadata = {} }) {
     action,
     targetType: "License",
     targetId: license?._id || null,
-    metadata: { licenseKey: license?.licenseKey, ...metadata },
+    metadata: { licenseKey: maskLicenseKey(license?.licenseKey), ...metadata },
     ip: req?.ip,
   });
 }
@@ -351,7 +352,7 @@ async function activateDomain({ license, domain, actor, actorRole = "admin", req
   await markExpiredIfNeeded(license);
   const summary = assertEntitlement(license, "activate", "This license is not eligible for activation.");
 
-  if (license.activeDomains.some((entry) => entry.domain === normalizedDomain)) return license;
+  if (license.activeDomains.some((entry) => normalizeDomain(entry.domain) === normalizedDomain)) return license;
   if (summary.remainingActivations !== null && summary.remainingActivations <= 0) {
     throw new AppError("Activation limit reached.", 403);
   }
@@ -373,7 +374,7 @@ async function deactivateDomain({ license, domain, actor, actorRole = "admin", r
   const normalizedDomain = normalizeDomain(domain);
   if (!isValidDomain(normalizedDomain)) throw new AppError("Invalid domain format.", 422);
   const before = license.activeDomains.length;
-  license.activeDomains = license.activeDomains.filter((entry) => entry.domain !== normalizedDomain);
+  license.activeDomains = license.activeDomains.filter((entry) => normalizeDomain(entry.domain) !== normalizedDomain);
   if (license.activeDomains.length === before) return license;
   await license.save();
   await LicenseActivation.create({

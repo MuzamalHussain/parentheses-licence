@@ -112,6 +112,10 @@ function loadController(harness) {
     ["src/models/AuditLog.js", harness.mocks.AuditLogMock],
     ["src/utils/auditLog.js", { writeAuditLog: async (entry) => harness.store.auditLogs.push(entry) }],
     ["src/services/notificationService.js", {
+      sendVerificationEmail: async (payload) => {
+        harness.store.notifications.push(payload);
+        return { success: true, provider: "test" };
+      },
       sendPasswordResetEmail: async (payload) => {
         harness.store.notifications.push(payload);
         return { success: true, provider: "test" };
@@ -232,6 +236,19 @@ async function testPasswordResetAndSessionRevocation() {
   assert.strictEqual(harness.store.auditLogs[1].action, "admin.user.sessions_revoked");
 }
 
+async function testAdminResendsVerificationAndRecordsStatus() {
+  const harness = createHarness(createUser({ emailVerified: false }));
+  const controller = loadController(harness);
+  const result = await call(controller.resendCustomerVerification);
+
+  assert.ifError(result.error);
+  assert.strictEqual(result.res.statusCode, 200);
+  assert.strictEqual(harness.store.user.emailVerificationLastStatus, "sent");
+  assert.ok(harness.store.user.emailVerificationLastSentAt);
+  assert.ok(harness.store.user.emailVerificationToken);
+  assert.strictEqual(harness.store.auditLogs[0].action, "admin.user.verification_resent");
+}
+
 async function testValidationRejectsPrivilegedFields() {
   clearModule("src/validators/schemas.js");
   const { adminUserProfileUpdateSchema, adminUserStatusSchema } = require(path.join(root, "src/validators/schemas.js"));
@@ -267,6 +284,7 @@ async function run() {
     testSelfStatusActionRejected,
     testEmailVerificationAndInternalNote,
     testPasswordResetAndSessionRevocation,
+    testAdminResendsVerificationAndRecordsStatus,
     testValidationRejectsPrivilegedFields,
     testSuspendedUserRejectedByAuthMiddleware,
   ];

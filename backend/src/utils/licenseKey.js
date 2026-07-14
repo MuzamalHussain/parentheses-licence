@@ -46,4 +46,10 @@ async function generateUniqueLicenseKey(LicenseModel, maxAttempts = 10, options 
   throw new Error("Failed to generate a unique license key after max attempts.");
 }
 
-module.exports = { generateLicenseKey, generateUniqueLicenseKey };
+function maskLicenseKey(licenseKey = "") {
+  const compact = String(licenseKey).replace(/-/g, "");
+  if (compact.length <= 8) return "****";
+  return `${compact.slice(0, 4)}...${compact.slice(-4)}`;
+}
+
+module.exports = { generateLicenseKey, generateUniqueLicenseKey, maskLicenseKey };

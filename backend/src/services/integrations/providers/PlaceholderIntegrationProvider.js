@@ -1,8 +1,10 @@
 const IntegrationProviderInterface = require("../IntegrationProviderInterface");
 
 class PlaceholderIntegrationProvider extends IntegrationProviderInterface {
-  constructor({ id, name, capabilities = [] }) {
+  constructor({ id, name, category = "General", capabilities = [], fields = [] }) {
     super({ id, name, version: "0.1.0", capabilities });
+    this.category = category;
+    this.fields = fields;
   }
 
   validateConfig(config = {}) {

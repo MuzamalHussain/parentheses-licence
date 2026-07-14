@@ -32,6 +32,7 @@ router.get("/:id", validateRequest({ params: idParamSchema }), adminUserControll
 router.patch("/:id/profile", validateRequest({ params: idParamSchema, body: adminUserProfileUpdateSchema }), adminUserController.updateCustomerProfile);
 router.patch("/:id/status", validateRequest({ params: idParamSchema, body: adminUserStatusSchema }), adminUserController.updateCustomerStatus);
 router.patch("/:id/email-verification", validateRequest({ params: idParamSchema, body: adminUserEmailVerificationSchema }), adminUserController.updateCustomerEmailVerification);
+router.post("/:id/resend-verification", validateRequest({ params: idParamSchema }), adminUserController.resendCustomerVerification);
 router.post("/:id/force-password-reset", validateRequest({ params: idParamSchema }), adminUserController.forceCustomerPasswordReset);
 router.post("/:id/send-password-reset", validateRequest({ params: idParamSchema }), adminUserController.sendCustomerPasswordReset);
 router.post("/:id/revoke-sessions", validateRequest({ params: idParamSchema }), adminUserController.revokeCustomerSessions);

@@ -12,6 +12,18 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function withTimeout(promise, timeoutMs) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`Email send timed out after ${timeoutMs}ms`);
+      error.code = "EMAIL_SEND_TIMEOUT";
+      reject(error);
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function maskRecipient(recipient = "") {
   const [local, domain] = String(recipient).split("@");
   if (!domain) return recipient;
@@ -61,24 +73,33 @@ function emailEnabled(config) {
   return Boolean(config.email.enabled);
 }
 
-async function sendWithRetry({ provider, message, type, retryCount, metadata, actor }) {
+async function sendWithRetry({ provider, message, type, retryCount, timeoutMs, metadata, actor }) {
   const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
   let lastError;
   for (let attempt = 1; attempt <= retryCount + 1; attempt += 1) {
     try {
-      const info = await provider.send(message);
+      const remainingMs = Math.max(1, deadline - Date.now());
+      const info = await withTimeout(provider.send(message), remainingMs);
       logNotification({ type, provider: provider.name, status: "sent", durationMs: Date.now() - startedAt, recipient: message.to, attempt });
       await audit("notification.sent", { actor, type, channel: provider.channel, provider: provider.name, recipient: message.to, metadata });
       return { success: true, provider: provider.name, messageId: info?.messageId || info?.notificationId || "", attempts: attempt };
     } catch (err) {
       lastError = err;
-      const retrying = attempt <= retryCount;
+      const retrying = attempt <= retryCount && Date.now() < deadline;
       logNotification({ type, provider: provider.name, status: retrying ? "retrying" : "failed", durationMs: Date.now() - startedAt, recipient: message.to, error: err, attempt });
       await audit(retrying ? "notification.retried" : "notification.failed", { actor, type, channel: provider.channel, provider: provider.name, recipient: message.to, metadata, error: err });
-      if (retrying) await wait(Math.min(250 * attempt, 1000));
+      if (retrying) await wait(Math.min(250 * attempt, 1000, Math.max(0, deadline - Date.now())));
+      else break;
     }
   }
-  return { success: false, provider: provider.name, error: lastError?.message || "Notification failed", attempts: retryCount + 1 };
+  return {
+    success: false,
+    provider: provider.name,
+    error: lastError?.message || "Notification failed",
+    errorCode: lastError?.code || "EMAIL_SEND_FAILED",
+    attempts: retryCount + 1,
+  };
 }
 
 async function notify(type, options = {}) {
@@ -132,7 +153,15 @@ async function notify(type, options = {}) {
           data: metadata,
         };
 
-    const job = () => sendWithRetry({ provider, message, type, retryCount: channel === "email" ? config.email.retryCount : 0, metadata, actor });
+    const job = () => sendWithRetry({
+      provider,
+      message,
+      type,
+      retryCount: channel === "email" ? config.email.retryCount : 0,
+      timeoutMs: channel === "email" ? config.email.timeoutMs : 10000,
+      metadata,
+      actor,
+    });
     const { getNotificationQueue } = require("./notifications/queue");
     results.push(await (queue ? getNotificationQueue().enqueue(job) : job()));
   }

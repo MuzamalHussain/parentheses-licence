@@ -1,4 +1,5 @@
 const PlaceholderIntegrationProvider = require("./providers/PlaceholderIntegrationProvider");
+const ProviderCatalog = require("./ProviderCatalog");
 
 class IntegrationRegistry {
   constructor() {
@@ -24,6 +25,8 @@ class IntegrationRegistry {
       version: provider.version,
       capabilities: provider.capabilities,
       configurable: provider.configurable,
+      category: provider.category || "General",
+      fields: provider.fields || [],
     }));
   }
 
@@ -35,15 +38,15 @@ class IntegrationRegistry {
 }
 
 function registerDefaultProviders(registry) {
-  [
-    { id: "github", name: "GitHub", capabilities: ["webhooks", "release_sync"] },
+  const legacy = [
     { id: "wordpress_org", name: "WordPress.org", capabilities: ["release_sync"] },
     { id: "slack", name: "Slack", capabilities: ["notifications", "webhooks"] },
     { id: "discord", name: "Discord", capabilities: ["notifications", "webhooks"] },
     { id: "zapier", name: "Zapier", capabilities: ["webhooks", "automation"] },
     { id: "make", name: "Make.com", capabilities: ["webhooks", "automation"] },
     { id: "future_ai", name: "Future AI Providers", capabilities: ["ai_hooks"] },
-  ].forEach((definition) => registry.register(new PlaceholderIntegrationProvider(definition)));
+  ];
+  [...ProviderCatalog.PROVIDERS, ...legacy].forEach((definition) => registry.register(new PlaceholderIntegrationProvider(definition)));
 }
 
 const registry = new IntegrationRegistry();

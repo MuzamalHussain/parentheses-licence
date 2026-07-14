@@ -4,6 +4,7 @@ const { writeAuditLog } = require("../../utils/auditLog");
 const WebhookDispatcher = require("../webhooks/WebhookDispatcher");
 const WebhookSignatureService = require("../webhooks/WebhookSignatureService");
 const { validateDestinationUrl } = require("../webhooks/WebhookSecurity");
+const SecretService = require("../security/IntegrationSecretService");
 
 const SUPPORTED_EVENTS = [
   "UserRegistered",
@@ -36,17 +37,22 @@ function validateWebhookConfig(config = {}) {
 
 async function dispatch(eventName, payload = {}, options = {}) {
   if (!SUPPORTED_EVENTS.includes(eventName)) return { success: true, dispatched: 0, skipped: true, reason: "unsupported_event" };
-  const integrations = await Integration.find({
+  const query = Integration.find({
     enabled: true,
     status: { $in: ["connected", "pending"] },
     "configuration.webhookEvents": eventName,
-  }).lean();
+  });
+  const selected = typeof query.select === "function" ? query.select("+encryptedSecrets") : query;
+  const integrations = typeof selected.lean === "function" ? await selected.lean() : await selected;
 
   const results = [];
   for (const integration of integrations) {
     const validation = validateWebhookConfig(integration.configuration);
     const envelope = WebhookDispatcher.makeEnvelope(eventName, payload, { apiVersion: "2026-07-08" });
-    const signature = WebhookSignatureService.signEnvelope(integration.configuration?.signingSecret || "", envelope);
+    const signingSecret = integration.encryptedSecrets?.signingSecret
+      ? SecretService.decrypt(integration.encryptedSecrets.signingSecret)
+      : integration.configuration?.signingSecret || "";
+    const signature = WebhookSignatureService.signEnvelope(signingSecret, envelope);
     const record = await OutgoingWebhook.create({
       eventId: envelope.id,
       endpointId: null,

@@ -70,6 +70,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
+    emailVerificationLastStatus: {
+      type: String,
+      enum: ["sent", "failed"],
+      select: false,
+    },
     emailVerificationToken: {
       type: String,
       select: false,
@@ -172,6 +177,8 @@ userSchema.methods.toSafeJSON = function () {
     emailVerified: this.emailVerified,
     emailVerifiedAt: this.emailVerifiedAt || null,
     emailVerificationSource: this.emailVerificationSource || null,
+    emailVerificationLastSentAt: this.emailVerificationLastSentAt || null,
+    emailVerificationLastStatus: this.emailVerificationLastStatus || null,
     twoFactorEnabled: this.twoFactorEnabled,
     isActive: this.isActive,
     isSuspended: this.isSuspended,

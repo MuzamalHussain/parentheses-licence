@@ -123,6 +123,18 @@ export const useUpdateAdminUserEmailVerification = (id) => {
   });
 };
 
+export const useResendAdminUserVerification = (id) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post(`/admin/users/${id}/resend-verification`).then((r) => r.data),
+    onSuccess: (res) => {
+      toast.success(res.message || "Verification email sent.");
+      invalidateAdminUser(qc, id);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Could not send verification email."),
+  });
+};
+
 export const useForceAdminUserPasswordReset = (id) => {
   const qc = useQueryClient();
   return useMutation({

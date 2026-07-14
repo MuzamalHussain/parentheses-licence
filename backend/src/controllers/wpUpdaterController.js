@@ -57,7 +57,7 @@ async function resolveEntitlement({ licenseKey, pluginSlug, normalizedDomain }) 
   if (!entitlementSummary(license).canUpdate) return { error: license.status === "expired" ? "expired_license" : "inactive_license" };
   if (!license.productId || license.productId.slug !== pluginSlug) return { error: "not_entitled" };
   if (license.productId.status === "archived") return { error: "product_archived" };
-  if (!license.activeDomains.some((entry) => entry.domain === normalizedDomain)) return { error: "domain_not_activated" };
+  if (!license.activeDomains.some((entry) => normalizeDomain(entry.domain) === normalizedDomain)) return { error: "domain_not_activated" };
 
   return { license };
 }
@@ -206,7 +206,7 @@ exports.download = asyncHandler(async (req, res) => {
   if (!version || !version.isPublished || version.productId.toString() !== license.productId._id.toString()) {
     return unauthorized(res, "License is not entitled to this package.");
   }
-  if (!license.activeDomains.some((entry) => entry.domain === download.domain)) {
+  if (!license.activeDomains.some((entry) => normalizeDomain(entry.domain) === normalizeDomain(download.domain))) {
     return unauthorized(res, "Site is not activated for this license.");
   }
 

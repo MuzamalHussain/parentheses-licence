@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,10 +29,12 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [deliverySucceeded, setDeliverySucceeded] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const resendInFlight = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -51,8 +53,9 @@ export default function RegisterPage() {
       delete payload.confirmPassword;
       setRegisteredEmail(values.email);
       const result = await registerUser(payload);
+      setDeliverySucceeded(result.data?.emailSent === true);
       setResendMessage(result.data?.emailSent === false ? result.message : "");
-      setCooldown(result.data?.cooldownSeconds || 60);
+      setCooldown(result.data?.emailSent ? (result.data?.cooldownSeconds || 60) : 0);
       setSuccess(true);
     } catch (err) {
       setServerError(err.response?.data?.message || "Registration failed. Please try again.");
@@ -60,16 +63,19 @@ export default function RegisterPage() {
   };
 
   const resend = async () => {
+    if (resendInFlight.current) return;
+    resendInFlight.current = true;
     setResending(true);
     setResendMessage("");
     try {
-      const response = await api.post("/auth/resend-verification", { email: registeredEmail });
+      const response = await api.post("/auth/resend-verification", { email: registeredEmail }, { timeout: 15000 });
       const seconds = response.data?.data?.cooldownSeconds || 60;
       setResendMessage(response.data?.message || "Verification email sent.");
       setCooldown(seconds);
     } catch (err) {
-      setResendMessage(err.response?.data?.message || "Could not resend the verification email.");
+      setResendMessage(err.code === "ECONNABORTED" ? "The email request timed out. Please try again." : err.response?.data?.message || "Could not resend the verification email.");
     } finally {
+      resendInFlight.current = false;
       setResending(false);
     }
   };
@@ -80,9 +86,11 @@ export default function RegisterPage() {
         <div className="text-center space-y-4">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
           <p className="text-gray-600 text-sm">
-            We've sent a verification link to your email address. Please click the link to activate your account.
+            {deliverySucceeded
+              ? "We've sent a verification link to your email address. Please click the link to activate your account."
+              : "Your account was created, but the verification email was not delivered. Use the button below to try again."}
           </p>
-          <Button variant="secondary" loading={resending} disabled={cooldown > 0} onClick={resend}>
+          <Button variant="secondary" loading={resending} disabled={resending || cooldown > 0} onClick={resend}>
             {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend Verification Email"}
           </Button>
           {resendMessage && <p className="text-sm text-gray-600">{resendMessage}</p>}

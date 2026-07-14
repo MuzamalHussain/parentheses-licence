@@ -79,9 +79,10 @@ function createHarness({ allowedSites = 1, status = "active", expiresAt = null }
       }
 
       if (update.$pull?.activeDomains) {
-        const domain = update.$pull.activeDomains.domain;
+        const criterion = update.$pull.activeDomains.domain;
+        const domains = criterion.$in || [criterion];
         const before = store.license.activeDomains.length;
-        store.license.activeDomains = store.license.activeDomains.filter((entry) => entry.domain !== domain);
+        store.license.activeDomains = store.license.activeDomains.filter((entry) => !domains.includes(entry.domain));
         return query(before === store.license.activeDomains.length ? null : cloneLicense(store.license));
       }
 
@@ -206,6 +207,7 @@ async function testDifferentDomainRejectedWhenLimitReached() {
   const second = await call(controller.activate, activationBody("two.example.com"));
 
   assert.strictEqual(second.statusCode, 403);
+  assert.strictEqual(second.body.code, "ACTIVATION_LIMIT_REACHED");
   assert.strictEqual(harness.store.license.activeDomains.length, 1);
 }
 
@@ -286,6 +288,12 @@ async function testPluginValidationEndpointStillWorks() {
   assert.strictEqual(res.body.domainValid, true);
 }
 
+async function testWwwPolicyIsConsistentAcrossActivationMetadata() {
+  const { normalizedActivationInput } = require(path.join(root, "src/services/siteActivationService.js"));
+  const input = normalizedActivationInput({ siteUrl: "https://www.Example.com/wp-admin/" });
+  assert.strictEqual(input.domain, "example.com");
+}
+
 async function run() {
   const tests = [
     testSingleActivationSuccess,
@@ -297,6 +305,7 @@ async function run() {
     testConcurrentDifferentDomainsCannotExceedThreeSiteLimit,
     testSuspendedAndExpiredLicenseCannotActivate,
     testPluginValidationEndpointStillWorks,
+    testWwwPolicyIsConsistentAcrossActivationMetadata,
   ];
 
   for (const test of tests) {

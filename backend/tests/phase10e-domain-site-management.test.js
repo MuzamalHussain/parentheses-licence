@@ -20,6 +20,8 @@ function clearModule(relativePath) {
 
 function query(value) {
   return {
+    select() { return this; },
+    lean() { return Promise.resolve(value); },
     then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
   };
 }
@@ -45,6 +47,9 @@ function makeHarness() {
   };
 
   const LicenseMock = {
+    findById(id) {
+      return query(id === licenseId ? store.license : null);
+    },
     async findOneAndUpdate(filter, update) {
       if (filter._id !== licenseId) return null;
       if (update.$push?.activeDomains) store.license.activeDomains.push(update.$push.activeDomains);
@@ -53,7 +58,9 @@ function makeHarness() {
     async findByIdAndUpdate(id, update) {
       if (id !== licenseId) return null;
       if (update.$pull?.activeDomains) {
-        store.license.activeDomains = store.license.activeDomains.filter((entry) => entry.domain !== update.$pull.activeDomains.domain);
+        const criterion = update.$pull.activeDomains.domain;
+        const domains = criterion.$in || [criterion];
+        store.license.activeDomains = store.license.activeDomains.filter((entry) => !domains.includes(entry.domain));
       }
       return store.license;
     },

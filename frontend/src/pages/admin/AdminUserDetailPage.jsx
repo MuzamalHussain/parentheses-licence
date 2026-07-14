@@ -39,6 +39,7 @@ import {
   useForceAdminUserPasswordReset,
   useRevokeAdminUserSessions,
   useRevokeAdminUserSession,
+  useResendAdminUserVerification,
   useSendAdminUserPasswordReset,
   useUpdateAdminUserEmailVerification,
   useUpdateAdminUserProfile,
@@ -173,6 +174,7 @@ function CustomerManagementPanel({ customer, onOpenTab }) {
   const updateProfile = useUpdateAdminUserProfile(customer.id);
   const updateStatus = useUpdateAdminUserStatus(customer.id);
   const updateEmail = useUpdateAdminUserEmailVerification(customer.id);
+  const resendVerification = useResendAdminUserVerification(customer.id);
   const forceReset = useForceAdminUserPasswordReset(customer.id);
   const sendReset = useSendAdminUserPasswordReset(customer.id);
   const revokeSessions = useRevokeAdminUserSessions(customer.id);
@@ -294,6 +296,14 @@ function CustomerManagementPanel({ customer, onOpenTab }) {
               >
                 <Mail className="w-4 h-4" /> {customer.emailVerified ? "Unverify Email" : "Verify Email"}
               </Button>
+              <Button
+                variant="secondary"
+                loading={resendVerification.isPending}
+                disabled={customer.emailVerified}
+                onClick={() => resendVerification.mutate()}
+              >
+                <Mail className="w-4 h-4" /> Resend Verification
+              </Button>
             </div>
           </div>
 
@@ -401,6 +411,7 @@ function OverviewTab({ overview }) {
           <DetailItem label="Email verification" value={customer.emailVerified ? "Verified" : "Unverified"} />
           <DetailItem label="Verified at" value={formatDate(customer.emailVerifiedAt, true)} />
           <DetailItem label="Verification source" value={customer.emailVerificationSource === "manual_admin" ? "Manual Admin Verification" : customer.emailVerificationSource === "email" ? "Email Verification" : customer.emailVerificationSource === "api" ? "API" : "-"} />
+          <DetailItem label="Last verification email" value={customer.emailVerificationLastStatus ? `${formatLabel(customer.emailVerificationLastStatus)} - ${formatDate(customer.emailVerificationLastSentAt, true)}` : "-"} />
           <DetailItem label="Active licenses" value={counts.licenses?.active || 0} />
           <DetailItem label="Open tickets" value={counts.supportTickets?.open || 0} />
           <DetailItem label="Audit events" value={counts.auditEvents?.total || 0} />

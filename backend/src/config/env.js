@@ -39,6 +39,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   CLIENT_URL: stringWithDefault("http://localhost:5173"),
   CORS_ORIGIN: optionalString,
+  APP_ENCRYPTION_KEY: optionalString,
 
   MONGO_URI: z.string().min(1, "MONGO_URI is required"),
   MONGO_DB_NAME: stringWithDefault("parentheses_licensing"),
@@ -59,6 +60,7 @@ const envSchema = z.object({
 
   SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: optionalString,
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
   SMTP_FROM: optionalString,
@@ -183,6 +185,7 @@ function buildConfig() {
       provider: env.EMAIL_PROVIDER,
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE === undefined ? env.SMTP_PORT === 465 : String(env.SMTP_SECURE).toLowerCase() === "true",
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
       from: env.SMTP_FROM,

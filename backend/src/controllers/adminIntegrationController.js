@@ -15,6 +15,8 @@ exports.getIntegrations = asyncHandler(async (req, res) => {
       api: IntegrationManager.api.getDocumentationMetadata(),
       webhooks: { events: IntegrationManager.webhooks.SUPPORTED_EVENTS },
       extensions: IntegrationManager.extensions.listExtensions(),
+      categories: IntegrationManager.categories,
+      security: { encryption: IntegrationManager.encryptionStatus(), secretsExposed: false },
     },
     requestId: req.id,
   });
