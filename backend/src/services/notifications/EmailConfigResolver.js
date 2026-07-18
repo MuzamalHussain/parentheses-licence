@@ -1,98 +1,14 @@
-const Integration = require("../../models/Integration");
-const mongoose = require("mongoose");
-const IntegrationManager = require("../integrations/IntegrationManager");
+const settings = require("../settings");
 const { logInfo } = require("../../utils/logger");
-
-let lastLoggedFingerprint = "";
-
-function maskAddress(value = "") {
-  const match = String(value).match(/<?([^\s<>]+)@([^\s<>]+)>?/);
-  if (!match) return value ? "configured" : "";
-  return `${match[1].slice(0, 2)}***@${match[2]}`;
-}
-
-function parseBoolean(value, fallback = false) {
-  if (value === undefined || value === null || value === "") return fallback;
-  if (typeof value === "boolean") return value;
-  const normalized = String(value).trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return true;
-  if (["false", "0", "no", "off"].includes(normalized)) return false;
-  throw Object.assign(new Error(`Invalid boolean email setting: ${value}`), { code: "EMAIL_CONFIG_INVALID" });
-}
-
-function normalizeGmailAppPassword(host, password) {
-  const raw = String(password || "").trim();
-  if (!/(^|\.)gmail\.com$/i.test(String(host || ""))) return raw;
-  const compact = raw.replace(/\s+/g, "");
-  return /^[A-Za-z0-9]{16}$/.test(compact) ? compact : raw;
-}
-
-function fromAddress(configuration, fallback) {
-  if (!configuration.fromEmail) return fallback;
-  return configuration.fromName
-    ? `${configuration.fromName} <${configuration.fromEmail}>`
-    : configuration.fromEmail;
-}
-
-function validateResolvedEmail(email, source) {
-  if (!email.enabled) return;
-  const missing = ["host", "port", "user", "pass", "from"].filter((key) => !email[key]);
-  if (missing.length) {
-    throw Object.assign(new Error(`Invalid ${source} SMTP configuration; missing: ${missing.join(", ")}`), {
-      code: "EMAIL_CONFIG_INVALID",
-      source,
-    });
-  }
-}
-
+let fingerprint = "";
+const mask = (value = "") => { const [a, b] = String(value).replace(/[<>]/g, "").split("@"); return b ? `${a.slice(0, 2)}***@${b}` : value ? "configured" : ""; };
+function normalizeGmailAppPassword(host, password) { const raw = String(password || "").trim(); const compact = raw.replace(/\s+/g, ""); return /(^|\.)gmail\.com$/i.test(String(host || "")) && /^[A-Za-z0-9]{16}$/.test(compact) ? compact : raw; }
 async function resolveEmailConfig(baseConfig) {
-  const record = mongoose.connection.readyState === 1
-    ? await Integration.findOne({ providerId: "smtp" }).select("enabled configuration encryptedSecrets").lean()
-    : null;
-  let email = { ...baseConfig.email, source: "env" };
-
-  if (record?.enabled) {
-    const db = await IntegrationManager.resolveConfiguration("smtp");
-    const encryption = String(db.encryption || "").toLowerCase();
-    email = {
-      ...email,
-      source: "database",
-      enabled: true,
-      host: db.host ?? email.host,
-      port: db.port === undefined ? email.port : Number(db.port),
-      secure: encryption ? encryption === "tls" : parseBoolean(db.secure, email.secure),
-      requireTLS: encryption ? encryption === "starttls" : parseBoolean(db.requireTLS, email.requireTLS),
-      user: db.username ?? email.user,
-      pass: db.password ?? email.pass,
-      from: fromAddress(db, email.from),
-      replyTo: db.replyTo ?? email.replyTo,
-      timeoutMs: db.timeoutMs === undefined ? email.timeoutMs : Number(db.timeoutMs),
-    };
-  }
-
-  email.port = Number(email.port);
-  email.timeoutMs = Number(email.timeoutMs) || 10000;
-  email.pass = normalizeGmailAppPassword(email.host, email.pass);
-  validateResolvedEmail(email, email.source);
-  const diagnostic = {
-    source: email.source,
-    enabled: email.enabled,
-    provider: email.provider,
-    host: email.host || "",
-    port: email.port,
-    secure: email.secure,
-    requireTLS: email.requireTLS,
-    username: maskAddress(email.user),
-    from: maskAddress(email.from),
-    timeout: email.timeoutMs,
-    passwordConfigured: Boolean(email.pass),
-  };
-  const fingerprint = JSON.stringify(diagnostic);
-  if (fingerprint !== lastLoggedFingerprint) {
-    logInfo("email.smtp_config_resolved", diagnostic);
-    lastLoggedFingerprint = fingerprint;
-  }
+  const values = await settings.getGroup("email");
+  const enabledSetting = await settings.get("email.enabled", { withMetadata: true });
+  const email = { ...baseConfig.email, source: "runtime-settings", enabled: enabledSetting.source === "default" ? baseConfig.email.enabled : values["email.enabled"], provider: values["email.provider"], host: values["email.smtp.host"], port: values["email.smtp.port"], secure: values["email.smtp.secure"], requireTLS: values["email.smtp.requireTLS"], user: values["email.smtp.username"], pass: normalizeGmailAppPassword(values["email.smtp.host"], values["email.smtp.password"]), from: `${values["email.fromName"]} <${values["email.fromEmail"]}>`, replyTo: values["email.replyTo"], retryCount: values["email.retryCount"], timeoutMs: values["email.socketTimeout"], connectionTimeout: values["email.connectionTimeout"], greetingTimeout: values["email.greetingTimeout"], socketTimeout: values["email.socketTimeout"], rateLimit: values["email.rateLimit"], maximumDaily: values["email.maximumDaily"], encoding: values["email.encoding"] };
+  const safe = { source: email.source, enabled: email.enabled, provider: email.provider, host: email.host, port: email.port, secure: email.secure, requireTLS: email.requireTLS, username: mask(email.user), from: mask(values["email.fromEmail"]), passwordConfigured: Boolean(email.pass) };
+  const next = JSON.stringify(safe); if (next !== fingerprint) { logInfo("email.smtp_config_resolved", safe); fingerprint = next; }
   return { ...baseConfig, email };
 }
-
-module.exports = { resolveEmailConfig, parseBoolean, normalizeGmailAppPassword, validateResolvedEmail, maskAddress };
+module.exports = { resolveEmailConfig, normalizeGmailAppPassword, maskAddress: mask };

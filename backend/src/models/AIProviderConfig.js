@@ -5,7 +5,7 @@ const aiProviderConfigSchema = new mongoose.Schema(
     organizationId: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null, index: true },
     providerId: {
       type: String,
-      enum: ["openai", "anthropic", "gemini", "groq", "ollama", "openrouter", "azure_openai", "future"],
+      enum: ["openai", "anthropic", "gemini", "groq", "deepseek", "ollama", "local_ai", "openrouter", "azure_openai"],
       required: true,
       index: true,
     },

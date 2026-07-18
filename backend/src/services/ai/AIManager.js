@@ -7,16 +7,12 @@ const Audit = require("./AIAuditService");
 const Permissions = require("./AIPermissionService");
 const AIProviderConfig = require("../../models/AIProviderConfig");
 const { AppError } = require("../../utils/errorHandler");
-
-const SECRET = crypto.createHash("sha256").update(process.env.AI_SETTINGS_SECRET || process.env.JWT_ACCESS_SECRET || "parentheses-ai-dev-secret").digest();
+const SettingsEncryptionProvider = require("../settings/SettingsEncryptionProvider");
+const settingsEncryption = new SettingsEncryptionProvider();
 
 function encrypt(value = "") {
   if (!value) return "";
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", SECRET, iv);
-  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+  return JSON.stringify(settingsEncryption.encrypt(value));
 }
 
 function fingerprint(value = "") {

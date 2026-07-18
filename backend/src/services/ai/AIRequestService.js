@@ -5,8 +5,23 @@ const AIProviderConfig = require("../../models/AIProviderConfig");
 const AIModel = require("../../models/AIModel");
 const Permissions = require("./AIPermissionService");
 const { AppError } = require("../../utils/errorHandler");
+const RuntimeProviders = require("../AIProvidersCenterService");
 
 async function resolveProviderChain(organizationId, preferredProviderId = "") {
+  const runtime = [];
+  for (const providerId of Object.keys(RuntimeProviders.PROVIDERS)) {
+    const status = await RuntimeProviders.status(providerId);
+    if (status.enabled && status.configured) {
+      const resolved = await RuntimeProviders.resolve(providerId);
+      runtime.push({ providerId, status: "configured", fallbackOrder: resolved.priority, health: status.health, runtime: true, config: resolved });
+    }
+  }
+  if (runtime.length) {
+    runtime.sort((a, b) => a.fallbackOrder - b.fallbackOrder);
+    if (!preferredProviderId) return runtime;
+    const preferred = runtime.find((provider) => provider.providerId === preferredProviderId);
+    return preferred ? [preferred, ...runtime.filter((provider) => provider !== preferred)] : runtime;
+  }
   const query = { organizationId, status: "configured" };
   const providers = await AIProviderConfig.find(query).sort({ fallbackOrder: 1, providerId: 1 }).select("+encryptedApiKey").lean();
   if (!providers.length) throw new AppError("No AI providers are configured.", 503);

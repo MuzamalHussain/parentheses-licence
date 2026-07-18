@@ -5,6 +5,8 @@ const PreferenceService = require("./notifications/NotificationPreferenceService
 const { writeAuditLog } = require("../utils/auditLog");
 const { logInfo, logWarn, logError } = require("../utils/logger");
 const { resolveEmailConfig } = require("./notifications/EmailConfigResolver");
+const mongoose = require("mongoose");
+const EmailEventLog = require("../models/EmailEventLog");
 
 let providerOverride = null;
 let loggerOverride = null;
@@ -53,6 +55,7 @@ function logNotification({ type, provider, status, durationMs, recipient, error,
   if (status === "sent") logger.log("[Notification]", payload);
   else logger.warn("[Notification]", payload);
 }
+async function persistEmailEvent(event, data) { if (mongoose.connection.readyState === 1) await EmailEventLog.create({ event, ...data }).catch(() => {}); }
 
 async function audit(action, { actor = null, type, channel, provider, recipient, metadata = {}, error = null }) {
   await writeAuditLog({
@@ -83,12 +86,14 @@ async function sendWithRetry({ provider, message, type, retryCount, timeoutMs, m
       const remainingMs = Math.max(1, deadline - Date.now());
       const info = await withTimeout(provider.send(message), remainingMs);
       logNotification({ type, provider: provider.name, status: "sent", durationMs: Date.now() - startedAt, recipient: message.to, attempt });
+      await persistEmailEvent("email.sent", { provider: provider.name, recipient: maskRecipient(message.to), subject: message.subject, status: "sent", durationMs: Date.now() - startedAt, messageId: info?.messageId || "", response: String(info?.response || "").slice(0, 500) });
       await audit("notification.sent", { actor, type, channel: provider.channel, provider: provider.name, recipient: message.to, metadata });
-      return { success: true, provider: provider.name, messageId: info?.messageId || info?.notificationId || "", attempts: attempt };
+      return { success: true, provider: provider.name, messageId: info?.messageId || info?.notificationId || "", response: String(info?.response || "").slice(0, 500), accepted: info?.accepted || [], attempts: attempt };
     } catch (err) {
       lastError = err;
       const retrying = attempt <= retryCount && Date.now() < deadline;
       logNotification({ type, provider: provider.name, status: retrying ? "retrying" : "failed", durationMs: Date.now() - startedAt, recipient: message.to, error: err, attempt });
+      await persistEmailEvent(retrying ? "email.retry" : err.code === "EAUTH" ? "email.authentication_failed" : err.code === "ETIMEDOUT" || err.code === "EMAIL_SEND_TIMEOUT" ? "email.timeout" : "email.failed", { provider: provider.name, recipient: maskRecipient(message.to), subject: message.subject, status: retrying ? "retrying" : "failed", durationMs: Date.now() - startedAt, error: String(err.message || "Email failed").slice(0, 500) });
       await audit(retrying ? "notification.retried" : "notification.failed", { actor, type, channel: provider.channel, provider: provider.name, recipient: message.to, metadata, error: err });
       if (retrying) await wait(Math.min(250 * attempt, 1000, Math.max(0, deadline - Date.now())));
       else break;

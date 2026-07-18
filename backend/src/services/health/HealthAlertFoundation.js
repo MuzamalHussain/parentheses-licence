@@ -1,0 +1,2 @@
+class HealthAlertFoundation { constructor() { this.channels = new Map(); this.events = []; } registerChannel(name, adapter) { if (this.channels.has(name)) throw new Error(`Alert channel '${name}' already registered.`); this.channels.set(name, adapter); } record(event) { this.events.unshift({ ...event, createdAt: new Date() }); this.events = this.events.slice(0, 200); } recent(limit = 20) { return this.events.slice(0, limit); } }
+module.exports = new HealthAlertFoundation(); module.exports.HealthAlertFoundation = HealthAlertFoundation;

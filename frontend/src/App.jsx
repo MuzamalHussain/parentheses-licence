@@ -37,6 +37,8 @@ import AdminSupport from "./pages/admin/AdminSupport";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminWorkflows from "./pages/admin/AdminWorkflows";
 import AdminOperations from "./pages/admin/AdminOperations";
+import AdminDiagnostics from "./pages/admin/AdminDiagnostics";
+import AdminConfiguration from "./pages/admin/AdminConfiguration";
 import AdminInfrastructure from "./pages/admin/AdminInfrastructure";
 import AdminPerformance from "./pages/admin/AdminPerformance";
 import AdminObservability from "./pages/admin/AdminObservability";
@@ -105,6 +107,8 @@ export default function App() {
                 <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
                 <Route path="/admin/workflows" element={<AdminWorkflows />} />
                 <Route path="/admin/operations" element={<AdminOperations />} />
+                <Route path="/admin/diagnostics" element={<AdminDiagnostics />} />
+                <Route path="/admin/configuration" element={<AdminConfiguration />} />
                 <Route path="/admin/infrastructure" element={<AdminInfrastructure />} />
                 <Route path="/admin/performance" element={<AdminPerformance />} />
                 <Route path="/admin/observability" element={<AdminObservability />} />

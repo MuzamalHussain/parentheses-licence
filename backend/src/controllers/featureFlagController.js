@@ -1,0 +1,11 @@
+const asyncHandler = require("express-async-handler");
+const service = require("../services/featureFlags/FeatureFlagService");
+const context = (req) => ({ actorId: req.user._id, role: req.user.role, userId: req.user._id, environment: process.env.NODE_ENV, ip: req.ip, requestId: req.id });
+exports.list = asyncHandler(async (req, res) => res.json({ success: true, data: await service.getFlags({ search: req.query.search, category: req.query.category }) }));
+exports.patch = asyncHandler(async (req, res) => res.json({ success: true, message: "Feature flag updated.", data: await service.update(req.params.key, req.body, context(req)) }));
+exports.enable = asyncHandler(async (req, res) => res.json({ success: true, message: "Feature enabled.", data: await service.enable(req.params.key, context(req)) }));
+exports.disable = asyncHandler(async (req, res) => res.json({ success: true, message: "Feature disabled.", data: await service.disable(req.params.key, context(req)) }));
+exports.evaluate = asyncHandler(async (req, res) => res.json({ success: true, data: await service.evaluate(req.params.key, { ...req.body, environment: req.body.environment || process.env.NODE_ENV, ip: req.body.ip || req.ip }) }));
+exports.maintenance = asyncHandler(async (req, res) => res.json({ success: true, data: await service.maintenance() }));
+exports.updateMaintenance = asyncHandler(async (req, res) => res.json({ success: true, message: "Maintenance policy updated.", data: await service.updateMaintenance(req.body, context(req)) }));
+exports.bulk = asyncHandler(async (req, res) => { const results = []; for (const key of req.body.keys || []) results.push(await service.update(key, req.body.changes || {}, context(req))); res.json({ success: true, message: `${results.length} feature flags updated.`, data: results }); });

@@ -10,6 +10,8 @@ const { writeAuditLog } = require("../utils/auditLog");
 const { logInfo, logWarn, logError } = require("../utils/logger");
 const { getSessionClient } = require("../utils/sessionSecurity");
 const EnterpriseIdentityService = require("../services/identity/EnterpriseIdentityService");
+const SecurityRuntime = require("../services/security/SecurityRuntime");
+const FeatureFlags = require("../services/featureFlags/FeatureFlagService");
 
 // Helper — hash a plain token for safe DB storage
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
@@ -97,12 +99,12 @@ function parseDurationMs(value, fallbackMs) {
 }
 
 function refreshCookieOptions() {
-  const config = getConfig();
+  const policy = SecurityRuntime.cookies();
   return {
-    httpOnly: true,
-    secure: config.app.isProduction,
-    sameSite: "strict",
-    maxAge: parseDurationMs(config.auth.refreshExpires, 7 * 24 * 60 * 60 * 1000),
+    httpOnly: policy.httpOnly,
+    secure: policy.secure,
+    sameSite: policy.sameSite,
+    maxAge: policy.lifetimeMs,
   };
 }
 
@@ -139,13 +141,13 @@ async function registerFailedLogin(user, email, req = null) {
     return;
   }
 
-  const config = getConfig();
+  const brute = SecurityRuntime.value("security.bruteForce", { maximumFailedAttempts: 5, lockoutDurationMs: 900000 });
   const failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
   const wasLocked = isLoginLocked(user);
   user.failedLoginAttempts = failedLoginAttempts;
 
-  if (failedLoginAttempts >= config.auth.maxFailedLoginAttempts) {
-    user.loginLockedUntil = new Date(Date.now() + config.auth.loginLockoutMinutes * 60 * 1000);
+  if (failedLoginAttempts >= brute.maximumFailedAttempts) {
+    user.loginLockedUntil = new Date(Date.now() + brute.lockoutDurationMs);
     logWarn("auth.login_locked", { userId: user._id, failedLoginAttempts });
   } else {
     logWarn("auth.login_failed", { userId: user._id, reason: "invalid_credentials", failedLoginAttempts });
@@ -169,7 +171,7 @@ async function registerFailedLogin(user, email, req = null) {
 
 function pruneRefreshSessions(user) {
   const now = Date.now();
-  const maxSessions = getConfig().auth.maxRefreshSessions;
+  const maxSessions = SecurityRuntime.value("security.sessions", { maximumConcurrentSessions: 5 }).maximumConcurrentSessions;
   user.refreshSessions = (user.refreshSessions || [])
     .filter((session) => session.expiresAt && new Date(session.expiresAt).getTime() > now)
     .sort((a, b) => new Date(b.lastUsedAt || b.createdAt) - new Date(a.lastUsedAt || a.createdAt))
@@ -207,7 +209,7 @@ function issueRefreshSession(user, payload, existingSessionId = null, req = null
   } else {
     sessions.unshift(session);
   }
-  user.refreshSessions = sessions.slice(0, getConfig().auth.maxRefreshSessions);
+  user.refreshSessions = sessions.slice(0, SecurityRuntime.value("security.sessions", { maximumConcurrentSessions: 5 }).maximumConcurrentSessions);
 
   return refreshToken;
 }
@@ -227,7 +229,7 @@ exports.register = asyncHandler(async (req, res) => {
   if (existing) throw new AppError("An account with this email already exists.", 409);
 
   const passwordPolicy = await EnterpriseIdentityService.resolvePolicy(null);
-  const passwordCheck = EnterpriseIdentityService.validatePassword(password, passwordPolicy.password);
+  const passwordCheck = EnterpriseIdentityService.validatePassword(password, passwordPolicy.password, [], `${name} ${email}`);
   if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
   const passwordHash = await bcrypt.hash(password, 12);
 
@@ -284,7 +286,7 @@ exports.login = asyncHandler(async (req, res) => {
   }
   if (!user.isActive) throw new AppError("Your account has been deactivated. Contact support.", 403);
   if (user.isSuspended) throw new AppError("Your account has been suspended. Contact support.", 403);
-  if (getConfig().features.ENABLE_EMAIL_VERIFICATION_ENFORCEMENT && !user.emailVerified) {
+  if (await FeatureFlags.isEnabled("email.verification_enforcement", { role: user.role, userId: user._id, ip: req.ip }) && !user.emailVerified) {
     throw new AppError("Please verify your email before signing in.", 403, "EMAIL_NOT_VERIFIED");
   }
   const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
@@ -505,7 +507,7 @@ exports.resetPassword = asyncHandler(async (req, res) => {
 
   if (!user) throw new AppError("Reset token is invalid or has expired.", 400);
   const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
-  const passwordCheck = EnterpriseIdentityService.validatePassword(password, identityPolicy.password, user.passwordHistory || []);
+  const passwordCheck = EnterpriseIdentityService.validatePassword(password, identityPolicy.password, user.passwordHistory || [], `${user.name} ${user.email}`);
   if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
 
   const previousHash = user.passwordHash;

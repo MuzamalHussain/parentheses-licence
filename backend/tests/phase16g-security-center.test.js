@@ -1,0 +1,28 @@
+const assert = require("assert");
+process.env.NODE_ENV = "test"; process.env.MONGO_URI = "mongodb://127.0.0.1/test"; process.env.JWT_ACCESS_SECRET = "phase16g-access-secret"; process.env.JWT_REFRESH_SECRET = "phase16g-refresh-secret"; process.env.APP_ENCRYPTION_KEY = "phase16g-encryption-key-32-characters";
+const { SettingDefinitionRegistry } = require("../src/services/settings/SettingDefinitionRegistry");
+const { registerSecuritySettings, cidr, origin } = require("../src/services/settings/SecuritySettingDefinitions");
+const Validators = require("../src/services/settings/SettingValidators");
+const Runtime = require("../src/services/security/SecurityRuntime");
+const Identity = require("../src/services/identity/EnterpriseIdentityService");
+const { matches } = require("../src/middleware/runtimeSecurity");
+(async () => {
+  const registry = registerSecuritySettings(new SettingDefinitionRegistry());
+  assert.ok(registry.getGroup("security").length >= 20);
+  assert.ok(cidr("10.0.0.0/8")); assert.ok(cidr("2001:db8::/32")); assert.ok(!cidr("999.1.1.1"));
+  assert.ok(origin("https://admin.example.com")); assert.ok(!origin("javascript:alert(1)"));
+  assert.ok(matches("10.4.5.6", "10.0.0.0/8")); assert.ok(!matches("11.4.5.6", "10.0.0.0/8"));
+  const passwordDefinition = registry.get("security.password");
+  assert.throws(() => Validators.validate(passwordDefinition, { ...passwordDefinition.default, minimumLength: 40, maximumLength: 20 }));
+  const corsDefinition = registry.get("security.cors");
+  assert.throws(() => Validators.validate(corsDefinition, { ...corsDefinition.default, allowedOrigins: ["*"] }));
+  Runtime.current()["security.jwt"] = { accessTokenLifetime: "2m", refreshTokenLifetime: "3d", tokenRotation: true, refreshPolicy: "rotate", signingAlgorithm: "HS256", clockSkewSeconds: 10 };
+  const jwt = require("../src/utils/jwt"); const token = jwt.signAccessToken({ id: "abc", role: "admin" }); assert.strictEqual(jwt.verifyAccessToken(token).id, "abc");
+  const check = Identity.validatePassword("password123", { minLength: 8, preventCommonPasswords: true }); assert.strictEqual(check.valid, false);
+  const identityCheck = Identity.validatePassword("Muzamal!123", { minLength: 8, preventUsernameUsage: true }, [], "Muzamal"); assert.strictEqual(identityCheck.valid, false);
+  const routes = require("../src/routes/adminSettings").stack.filter((x) => x.route).map((x) => x.route.path);
+  ["/security-center", "/security-health", "/security-policies", "/security-force-logout"].forEach((path) => assert.ok(routes.includes(path)));
+  const Audit = require("../src/models/RuntimeSettingAudit"); ["security.settings.updated", "password.policy.updated", "jwt.updated", "session.updated", "rate_limit.updated", "cors.updated", "ip.blocked", "ip.unblocked", "security.header.updated"].forEach((event) => assert.strictEqual(new Audit({ event }).validateSync(), undefined));
+  console.log("PASS Phase 16G Security Center tests");
+  process.exit(0);
+})().catch((error) => { console.error(error); process.exitCode = 1; });

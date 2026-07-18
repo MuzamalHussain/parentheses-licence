@@ -17,6 +17,8 @@ const navItems = [
   { to: "/admin/audit", icon: FileText, label: "Audit Log" },
   { to: "/admin/workflows", icon: Workflow, label: "Automation", roles: ["admin"] },
   { to: "/admin/operations", icon: Activity, label: "Operations", roles: ["admin"] },
+  { to: "/admin/diagnostics", icon: Siren, label: "Diagnostics", roles: ["admin"] },
+  { to: "/admin/configuration", icon: Settings, label: "Configuration", roles: ["admin"] },
   { to: "/admin/infrastructure", icon: Server, label: "Infrastructure", roles: ["admin"] },
   { to: "/admin/performance", icon: Gauge, label: "Performance", roles: ["admin"] },
   { to: "/admin/observability", icon: Siren, label: "Observability", roles: ["admin"] },

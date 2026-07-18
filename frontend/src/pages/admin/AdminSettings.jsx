@@ -1,9 +1,47 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save, Settings, ShieldCheck } from "lucide-react";
 import { Alert, Button, Input } from "../../components/ui";
-import { useAdminSettings, useFeatureFlags, usePaymentProviders, useUpdateSetting } from "../../hooks/useSettings";
+import PaymentCenterSection from "./PaymentCenterSection";
+import AIProvidersCenterSection from "./AIProvidersCenterSection";
+import StorageCenterSection from "./StorageCenterSection";
+import SecurityCenterSection from "./SecurityCenterSection";
+import FeatureFlagCenterSection from "./FeatureFlagCenterSection";
+import { useAdminSettings, useEmailAction, useEmailCenter, useEmailHealth, useFeatureFlags, useGeneralSettings, usePaymentProviders, useUpdateGeneralSettings, useUpdateSetting, useUploadGeneralAsset } from "../../hooks/useSettings";
 
-const groupOrder = ["General", "Licensing", "Downloads", "Payments", "Email", "Security", "WordPress Updater", "Maintenance"];
+const groupOrder = ["Licensing", "Downloads", "Payments", "Security", "WordPress Updater", "Maintenance"];
+
+function EmailCenterSection(){const{data={},isLoading}=useEmailCenter();const{data:health}=useEmailHealth();const action=useEmailAction();const initial=useMemo(()=>Object.fromEntries(Object.entries(data).filter(([,v])=>Object.hasOwn(v,"value")).map(([k,v])=>[k,v.value])),[data]);const[form,setForm]=useState({});const[password,setPassword]=useState("");const[to,setTo]=useState("");useEffect(()=>setForm(initial),[initial]);if(isLoading)return <section className="card p-8"><Loader2 className="animate-spin"/></section>;const set=(k,v)=>setForm(x=>({...x,[k]:v}));return <section className="card p-5 space-y-5"><div className="flex justify-between"><div><h2 className="font-semibold">Email Center</h2><p className="text-sm text-gray-500">Operational SMTP configuration and diagnostics.</p></div><span className="text-sm font-medium">Status: {health?.status||"disconnected"}</span></div><div className="grid md:grid-cols-2 gap-3">{Object.entries(form).map(([key,value])=><label key={key} className="text-sm"><span>{key.replace("email.","")}</span>{typeof value==="boolean"?<input className="ml-2" type="checkbox" checked={value} onChange={e=>set(key,e.target.checked)}/>:<Input type={key.includes("Email")||key.includes("replyTo")?"email":key.includes("port")||key.includes("Timeout")||key.includes("Count")||key.includes("Limit")||key.includes("maximum")?"number":"text"} value={value??""} onChange={e=>set(key,e.target.type==="number"?Number(e.target.value):e.target.value)}/>}</label>)}</div><div className="grid md:grid-cols-[1fr_auto_auto] gap-2"><Input type="password" value={password} placeholder={data["email.smtp.password"]?.configured?"•••••••• (configured)":"SMTP password"} onChange={e=>setPassword(e.target.value)}/><Button disabled={!password||action.isPending} onClick={()=>action.mutate({action:"password",payload:{value:password}})}>Replace Password</Button><Button disabled={!data["email.smtp.password"]?.configured||action.isPending} onClick={()=>window.confirm("Clear SMTP password?")&&action.mutate({action:"password",payload:{clear:true}})}>Clear</Button></div><div className="flex flex-wrap gap-2"><Button onClick={()=>action.mutate({action:"save",payload:form})}>Save</Button><Button onClick={()=>action.mutate({action:"test"})}>Test Connection</Button><Input className="max-w-xs" type="email" value={to} placeholder="Test recipient" onChange={e=>setTo(e.target.value)}/><Button disabled={!to} onClick={()=>action.mutate({action:"send",payload:to})}>Send Test Email</Button></div><div className="grid sm:grid-cols-3 gap-2 text-xs"><span>Last test: {health?.lastTestTime?new Date(health.lastTestTime).toLocaleString():"Never"}</span><span>Last success: {health?.lastSuccessfulConnection?new Date(health.lastSuccessfulConnection).toLocaleString():"Never"}</span><span>Last failure: {health?.lastFailedConnection?new Date(health.lastFailedConnection).toLocaleString():"Never"}</span></div></section>}
+
+function GeneralSettingsSection() {
+  const { data = [], isLoading, error } = useGeneralSettings();
+  const update = useUpdateGeneralSettings();
+  const upload = useUploadGeneralAsset();
+  const initial = useMemo(() => Object.fromEntries(data.map((item) => [item.key, item.value ?? ""])), [data]);
+  const [values, setValues] = useState({});
+  useEffect(() => setValues(initial), [initial]);
+  const dirty = JSON.stringify(values) !== JSON.stringify(initial);
+  useEffect(() => { const warn = (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty]);
+  const changed = Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== initial[key]));
+  const save = () => update.mutate(changed);
+  const uploadFile = (kind, file) => { if (file) upload.mutate({ kind, file }); };
+
+  if (isLoading) return <section className="bg-white border rounded-lg p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-500" /></section>;
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between"><div><h2 className="font-semibold text-gray-900">General</h2><p className="text-sm text-gray-500 mt-1">Portal identity, company details, regional formats, and brand assets.</p></div><Button type="button" onClick={save} loading={update.isPending} disabled={!dirty || update.isPending || upload.isPending}><Save className="w-4 h-4" /> Save changes</Button></div>
+      {error && <div className="p-5"><Alert message={error.response?.data?.message || "Could not load General settings."} /></div>}
+      {dirty && <div className="mx-5 mt-4 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">You have unsaved General Settings changes.</div>}
+      <div className="divide-y divide-gray-100">
+        {data.map((setting) => {
+          const asset = setting.key === "general.brandLogo" ? "logo" : setting.key === "general.favicon" ? "favicon" : null;
+          return <div key={setting.key} className="grid lg:grid-cols-[1fr_360px] gap-4 px-5 py-4"><div><label htmlFor={setting.key} className="font-medium text-sm text-gray-900">{setting.label}</label><p className="text-sm text-gray-500 mt-1">{setting.description}</p></div><div>
+            {asset ? <div className="space-y-2">{values[setting.key] && <img src={values[setting.key]} alt={`${setting.label} preview`} className="h-10 max-w-40 object-contain" />}<Input id={setting.key} type="file" accept={asset === "logo" ? "image/png,image/jpeg,image/webp" : "image/png,image/x-icon"} onChange={(event) => uploadFile(asset, event.target.files?.[0])} disabled={upload.isPending || update.isPending} /></div> : setting.options?.length ? <select id={setting.key} value={values[setting.key] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [setting.key]: event.target.value }))} disabled={update.isPending} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">{setting.options.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <Input id={setting.key} type={setting.type === "email" ? "email" : setting.type === "url" ? "url" : "text"} required={setting.required} value={values[setting.key] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [setting.key]: event.target.value }))} disabled={update.isPending} />}
+          </div></div>;
+        })}
+      </div>
+    </section>
+  );
+}
 
 function SettingInput({ setting }) {
   const [value, setValue] = useState(setting.value ?? "");
@@ -84,6 +122,8 @@ function SettingsGroup({ title, settings = [] }) {
   );
 }
 
+// Legacy component retained for compatibility while FeatureFlagCenterSection owns runtime controls.
+// eslint-disable-next-line no-unused-vars
 function FeatureFlagsSection() {
   const { data: flags = [], isLoading, error } = useFeatureFlags();
 
@@ -132,6 +172,8 @@ function providerBadgeClass(label) {
   return "bg-red-50 text-red-700";
 }
 
+// Legacy status component retained for compatibility while Payment Center owns configuration.
+// eslint-disable-next-line no-unused-vars
 function PaymentProvidersSection() {
   const { data: providers = [], isLoading, error } = usePaymentProviders();
 
@@ -199,12 +241,18 @@ export default function AdminSettings() {
 
       {error && <Alert message={error.response?.data?.message || "Could not load settings."} />}
 
+      <GeneralSettingsSection />
+      <EmailCenterSection />
+
       {groupOrder.map((group) => (
         <SettingsGroup key={group} title={group} settings={data?.[group] || []} />
       ))}
 
-      <PaymentProvidersSection />
-      <FeatureFlagsSection />
+      <PaymentCenterSection />
+      <AIProvidersCenterSection />
+      <StorageCenterSection />
+      <SecurityCenterSection />
+      <FeatureFlagCenterSection />
     </div>
   );
 }

@@ -1,97 +1,14 @@
-const fs = require("fs");
-const path = require("path");
-const { getConfig } = require("../config/env");
-
-function safeLocalPath(filePath) {
-  const raw = String(filePath || "");
-  if (!raw || raw.split(/[\\/]+/).includes("..")) return "";
-  return path.normalize(raw);
-}
-
-function contentTypeFor(filename = "") {
-  const extension = path.extname(filename).toLowerCase();
-  if (extension === ".zip") return "application/zip";
-  if (extension === ".pdf") return "application/pdf";
-  if (extension === ".md" || extension === ".txt") return "text/plain; charset=utf-8";
-  return "application/octet-stream";
-}
-
-class LocalStorageAdapter {
-  constructor() {
-    this.provider = "local";
-  }
-
-  async stat(asset) {
-    const normalizedPath = safeLocalPath(asset.path);
-    if (!normalizedPath) return { exists: false };
-
-    try {
-      const stat = fs.statSync(normalizedPath);
-      return {
-        exists: stat.isFile(),
-        size: stat.size,
-        path: normalizedPath,
-        contentType: asset.contentType || contentTypeFor(asset.fileName || normalizedPath),
-      };
-    } catch {
-      return { exists: false };
-    }
-  }
-
-  createReadStream(asset) {
-    const normalizedPath = safeLocalPath(asset.path);
-    return fs.createReadStream(normalizedPath);
-  }
-}
-
-class S3CompatibleStorageAdapter {
-  constructor(provider = "s3") {
-    this.provider = provider;
-  }
-
-  async stat() {
-    return { exists: false, unsupported: true };
-  }
-
-  createReadStream() {
-    throw new Error(`${this.provider} download streaming is not configured in this deployment.`);
-  }
-}
-
-class CloudflareR2StorageAdapter extends S3CompatibleStorageAdapter {
-  constructor() {
-    super("r2");
-  }
-}
-
-class AzureBlobStorageAdapter extends S3CompatibleStorageAdapter {
-  constructor() {
-    super("azure_blob");
-  }
-}
-
-class GoogleCloudStorageAdapter extends S3CompatibleStorageAdapter {
-  constructor() {
-    super("gcs");
-  }
-}
-
-function getStorageAdapter(provider = getConfig().storage.provider) {
-  const key = String(provider).toLowerCase();
-  if (key === "s3") return new S3CompatibleStorageAdapter("s3");
-  if (key === "r2" || key === "cloudflare_r2") return new CloudflareR2StorageAdapter();
-  if (key === "azure" || key === "azure_blob") return new AzureBlobStorageAdapter();
-  if (key === "gcs" || key === "google_cloud_storage") return new GoogleCloudStorageAdapter();
-  return new LocalStorageAdapter();
-}
-
-module.exports = {
-  AzureBlobStorageAdapter,
-  CloudflareR2StorageAdapter,
-  GoogleCloudStorageAdapter,
-  LocalStorageAdapter,
-  S3CompatibleStorageAdapter,
-  getStorageAdapter,
-  safeLocalPath,
-  contentTypeFor,
-};
+const fs=require("fs");const path=require("path");const crypto=require("crypto");const settings=require("./settings");const{PROVIDERS,CATEGORIES}=require("./settings/StorageSettingDefinitions");
+const clean=value=>String(value||"").replace(/\\/g,"/").split("/").filter(x=>x&&x!=="."&&x!=="..").join("/");const sanitizeFilename=name=>path.basename(String(name||"file")).replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,180);const hash=v=>crypto.createHash("sha256").update(v).digest("hex");const hmac=(k,v,enc)=>crypto.createHmac("sha256",k).update(v).digest(enc);
+async function providerConfig(id){if(!PROVIDERS[id])throw new Error("Unsupported storage provider.");return{...(await settings.get(`storage.${id}.config`)),accessKey:await settings.get(`storage.${id}.accessKey`),secretKey:await settings.get(`storage.${id}.secretKey`),id};}
+async function providerFor(category){const map=await settings.get("storage.categories");return map[category]||"local";}
+function validateFile(file,c){const ext=path.extname(file.name||file.fileName||"").toLowerCase();const size=Number(file.size??file.buffer?.length??0);if(size<1)throw new Error("File is empty.");if(size>c.maximumFileSize)throw new Error("File exceeds maximum size.");if(c.allowedExtensions?.length&&!c.allowedExtensions.includes(ext))throw new Error("File extension is not allowed.");if(c.allowedMimeTypes?.length&&file.mimeType&&!c.allowedMimeTypes.includes(file.mimeType))throw new Error("File MIME type is not allowed.");return{...file,name:sanitizeFilename(file.name||file.fileName),size,extension:ext,fingerprint:file.buffer?hash(file.buffer):""};}
+function s3Url(c,key){const endpoint=(c.endpoint||"https://s3.amazonaws.com").replace(/\/$/,"");return `${endpoint}/${encodeURIComponent(c.bucket)}/${clean(key).split("/").map(encodeURIComponent).join("/")}`;}
+function presign(c,key,method="GET",expires=c.signedUrlExpiration){if(!c.accessKey||!c.secretKey||!c.bucket)throw new Error("Storage credentials or bucket missing.");const now=new Date(),date=now.toISOString().replace(/[:-]|\.\d{3}/g,"");const day=date.slice(0,8),region=c.region||"us-east-1",scope=`${day}/${region}/s3/aws4_request`,url=new URL(s3Url(c,key));const params=new URLSearchParams({"X-Amz-Algorithm":"AWS4-HMAC-SHA256","X-Amz-Credential":`${c.accessKey}/${scope}`,"X-Amz-Date":date,"X-Amz-Expires":String(expires),"X-Amz-SignedHeaders":"host"});const canonicalQuery=[...params].sort().map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v).replace(/%2F/g,"%2F")}`).join("&"),canonical=`${method}\n${url.pathname}\n${canonicalQuery}\nhost:${url.host}\n\nhost\nUNSIGNED-PAYLOAD`,toSign=`AWS4-HMAC-SHA256\n${date}\n${scope}\n${hash(canonical)}`;const kDate=hmac(`AWS4${c.secretKey}`,day),kRegion=hmac(kDate,region),kService=hmac(kRegion,"s3"),kSigning=hmac(kService,"aws4_request"),signature=hmac(kSigning,toSign,"hex");return`${url}?${canonicalQuery}&X-Amz-Signature=${signature}`;}
+class StorageService{async resolve(category,provider){return provider||await providerFor(category);}async upload({category="temporaryFiles",provider,key,file}){const id=await this.resolve(category,provider),c=await providerConfig(id),safe=validateFile(file,c),target=clean(key||`${category}/${crypto.randomUUID()}-${safe.name}`);if(id==="local"){const root=path.resolve(c.storageRoot||"uploads"),full=path.resolve(root,target);if(!full.startsWith(`${root}${path.sep}`))throw new Error("Invalid storage path.");await fs.promises.mkdir(path.dirname(full),{recursive:true});await fs.promises.writeFile(full,safe.buffer,{flag:"wx"});return{provider:id,key:target,size:safe.size,fingerprint:safe.fingerprint};}if(["azure_blob","gcs"].includes(id))throw new Error(`${PROVIDERS[id].name} is foundation-only.`);const response=await fetch(presign(c,target,"PUT"),{method:"PUT",body:safe.buffer,signal:AbortSignal.timeout(c.uploadTimeout)});if(!response.ok)throw new Error(`Storage upload failed (${response.status}).`);return{provider:id,key:target,size:safe.size,fingerprint:safe.fingerprint};}async download({provider,key,category}){const id=await this.resolve(category,provider),c=await providerConfig(id);if(id==="local")return fs.promises.readFile(path.resolve(c.storageRoot||"uploads",clean(key)));const r=await fetch(presign(c,key),{signal:AbortSignal.timeout(c.downloadTimeout)});if(!r.ok)throw new Error(`Storage download failed (${r.status}).`);return Buffer.from(await r.arrayBuffer());}async delete(a){const id=await this.resolve(a.category,a.provider),c=await providerConfig(id);if(id==="local")return fs.promises.unlink(path.resolve(c.storageRoot||"uploads",clean(a.key)));const r=await fetch(presign(c,a.key,"DELETE"),{method:"DELETE"});if(!r.ok&&r.status!==404)throw new Error(`Storage delete failed (${r.status}).`);}async exists(a){try{await this.metadata(a);return true;}catch{return false;}}async metadata(a){const id=await this.resolve(a.category,a.provider),c=await providerConfig(id);if(id==="local"){const stat=await fs.promises.stat(path.resolve(c.storageRoot||"uploads",clean(a.key)));return{size:stat.size,modifiedAt:stat.mtime,provider:id,key:a.key};}const r=await fetch(presign(c,a.key,"HEAD"),{method:"HEAD"});if(!r.ok)throw new Error("File not found.");return{size:Number(r.headers.get("content-length")||0),provider:id,key:a.key};}async copy(a){const b=await this.download(a);return this.upload({...a,provider:a.toProvider||a.provider,key:a.toKey,file:{name:path.basename(a.toKey),size:b.length,buffer:b,mimeType:a.mimeType}});}async move(a){const out=await this.copy(a);await this.delete(a);return out;}rename(a){return this.move({...a,toKey:path.posix.join(path.posix.dirname(a.key),sanitizeFilename(a.name))});}async generateUrl(a){const id=await this.resolve(a.category,a.provider),c=await providerConfig(id);return c.publicUrl?`${c.publicUrl.replace(/\/$/,"")}/${clean(a.key)}`:this.generateSignedUrl(a);}async generateSignedUrl(a){const id=await this.resolve(a.category,a.provider),c=await providerConfig(id);return id==="local"?`/api/v1/storage/files/${encodeURIComponent(clean(a.key))}`:presign(c,a.key,"GET",a.expires||c.signedUrlExpiration);}async health(id){const started=Date.now(),c=await providerConfig(id);try{if(!c.enabled)return{status:"provider_disabled",latency:0};if(id==="local"){const root=path.resolve(c.storageRoot||"uploads"),test=path.join(root,`.health-${crypto.randomUUID()}`);await fs.promises.mkdir(root,{recursive:true});await fs.promises.writeFile(test,"ok");await fs.promises.readFile(test);await fs.promises.unlink(test);const disk=await fs.promises.statfs(root);return{status:"healthy",latency:Date.now()-started,availableSpace:disk.bavail*disk.bsize};}const key=`health/${crypto.randomUUID()}.txt`;await this.upload({provider:id,key,file:{name:"health.txt",size:2,buffer:Buffer.from("ok"),mimeType:"text/plain"}});await this.download({provider:id,key});await this.delete({provider:id,key});return{status:"healthy",latency:Date.now()-started};}catch(e){const m=e.message.toLowerCase();return{status:m.includes("403")?"permission_error":m.includes("404")?"bucket_missing":m.includes("timeout")?"timeout":"disconnected",latency:Date.now()-started,error:e.message};}}}
+const service=new StorageService();
+const contentTypeFor=(name="")=>({".zip":"application/zip",".pdf":"application/pdf",".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".json":"application/json",".txt":"text/plain; charset=utf-8"}[path.extname(name).toLowerCase()]||"application/octet-stream");
+class LocalStorageAdapter{constructor(){this.provider="local";}async stat(asset){try{const s=await fs.promises.stat(asset.path);return{exists:s.isFile(),size:s.size,path:asset.path,contentType:asset.contentType||contentTypeFor(asset.fileName||asset.path)};}catch{return{exists:false};}}createReadStream(asset){return fs.createReadStream(asset.path);}}
+class S3CompatibleStorageAdapter{constructor(provider="s3"){this.provider=provider;}async stat(){return{exists:false,unsupported:true};}createReadStream(){throw new Error(`${this.provider} streaming requires async StorageService.download.`);}}class CloudflareR2StorageAdapter extends S3CompatibleStorageAdapter{constructor(){super("r2");}}class AzureBlobStorageAdapter extends S3CompatibleStorageAdapter{constructor(){super("azure_blob");}}class GoogleCloudStorageAdapter extends S3CompatibleStorageAdapter{constructor(){super("gcs");}}
+function getStorageAdapter(provider="local"){if(provider!=="local")return new S3CompatibleStorageAdapter(provider);return new LocalStorageAdapter();}
+module.exports={StorageService,storageService:service,getStorageAdapter,LocalStorageAdapter,S3CompatibleStorageAdapter,CloudflareR2StorageAdapter,AzureBlobStorageAdapter,GoogleCloudStorageAdapter,sanitizeFilename,validateFile,clean,presign,providerConfig,CATEGORIES,contentTypeFor,safeLocalPath:clean};

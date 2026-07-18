@@ -1,0 +1,2 @@
+const mongoose=require("mongoose");
+const schema=new mongoose.Schema({provider:{type:String,default:"smtp",unique:true},status:{type:String,enum:["configured","healthy","disconnected","authentication_failed","tls_failed","timeout","dns_failure","invalid_configuration"],default:"disconnected"},lastSuccessfulConnection:{type:Date,default:null},lastFailedConnection:{type:Date,default:null},lastTestTime:{type:Date,default:null},lastError:{type:String,default:"",maxlength:500}},{timestamps:true,collection:"email_health"});module.exports=mongoose.model("EmailHealth",schema);

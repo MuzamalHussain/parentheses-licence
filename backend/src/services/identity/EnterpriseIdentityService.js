@@ -129,9 +129,14 @@ async function ensurePolicy(organizationId) {
 }
 
 async function resolvePolicy(organizationId = null) {
-  if (!organizationId) return mergePolicy(null);
+  const security = require("../security/SecurityRuntime");
+  if (!security.current()["security.password"]) await security.refresh();
+  const globalPassword = security.value("security.password", {});
+  const globalSessions = security.value("security.sessions", {});
+  const applyGlobal = (policy) => ({ ...policy, password: { ...policy.password, minLength: globalPassword.minimumLength, maximumLength: globalPassword.maximumLength, requireUppercase: globalPassword.uppercaseRequired, requireLowercase: globalPassword.lowercaseRequired, requireNumber: globalPassword.numberRequired, requireSymbol: globalPassword.specialCharacterRequired, historyCount: globalPassword.historyCount, expirationDays: globalPassword.expirationDays, preventCommonPasswords: globalPassword.preventCommonPasswords, preventUsernameUsage: globalPassword.preventUsernameUsage }, sessions: { ...policy.sessions, lifetimeMinutes: Math.floor(globalSessions.absoluteTimeoutMs / 60000), idleTimeoutMinutes: Math.floor(globalSessions.idleTimeoutMs / 60000), maxActiveSessions: globalSessions.maximumConcurrentSessions, revokeOnPasswordChange: globalSessions.invalidateOnPasswordChange } });
+  if (!organizationId) return applyGlobal(mergePolicy(null));
   const policy = await OrganizationSecurityPolicy.findOne({ organizationId }).lean();
-  return mergePolicy(policy);
+  return applyGlobal(mergePolicy(policy));
 }
 
 function validatePolicyPatch(input = {}) {
@@ -261,14 +266,19 @@ async function testProvider(organizationId, providerId, context = {}) {
   return { healthy: missing.length === 0, missing, provider: providerPayload(provider) };
 }
 
-function validatePassword(password, policy = DEFAULT_POLICY.password, previousHashes = []) {
+function validatePassword(password, policy = DEFAULT_POLICY.password, previousHashes = [], identity = "") {
   const errors = [];
   const value = String(password || "");
   if (value.length < policy.minLength) errors.push(`Password must be at least ${policy.minLength} characters.`);
+  if (policy.maximumLength && value.length > policy.maximumLength) errors.push(`Password must not exceed ${policy.maximumLength} characters.`);
   if (policy.requireUppercase && !/[A-Z]/.test(value)) errors.push("Password must include an uppercase letter.");
   if (policy.requireLowercase && !/[a-z]/.test(value)) errors.push("Password must include a lowercase letter.");
   if (policy.requireNumber && !/[0-9]/.test(value)) errors.push("Password must include a number.");
   if (policy.requireSymbol && !/[^A-Za-z0-9]/.test(value)) errors.push("Password must include a symbol.");
+  const common = ["password", "password123", "12345678", "qwerty123", "admin123", "letmein"];
+  if (policy.preventCommonPasswords && common.includes(value.toLowerCase())) errors.push("Password is too common.");
+  const identityParts = String(identity).toLowerCase().split(/[^a-z0-9]+/).filter((part) => part.length >= 3);
+  if (policy.preventUsernameUsage && identityParts.some((part) => value.toLowerCase().includes(part))) errors.push("Password must not contain your name or email.");
   if (previousHashes.some((hash) => bcrypt.compareSync(value, hash))) errors.push("Password was recently used.");
   return { valid: errors.length === 0, errors };
 }
@@ -433,6 +443,7 @@ function enforcePolicyForLogin(user, policy) {
   if (!policy.authentication.localLoginAllowed || policy.authentication.ssoRequired) {
     throw new AppError("Local login is disabled for this organization.", 403);
   }
+  if (policy.password.expirationDays > 0 && user.passwordChangedAt && Date.now() - new Date(user.passwordChangedAt).getTime() > policy.password.expirationDays * 86400000) throw new AppError("Password has expired. Reset it before signing in.", 403, "PASSWORD_EXPIRED");
   return true;
 }
 

@@ -1,7 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const Setting = require("../models/Setting");
 const { DEFAULT_SETTINGS } = require("../config/defaultSettings");
-const { getFeatureFlags } = require("../config/featureFlags");
 const { getPaymentProviderStatuses } = require("../services/paymentProviderStatus");
 const { AppError } = require("../utils/errorHandler");
 const { writeAuditLog } = require("../utils/auditLog");
@@ -122,10 +121,6 @@ exports.updateSecretSetting = asyncHandler(async (req, res) => {
     "Secret updates are reserved until encrypted settings storage is implemented. Update this value in the environment instead.",
     409
   );
-});
-
-exports.getFeatureFlags = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: getFeatureFlags() });
 });
 
 exports.getPaymentProviders = asyncHandler(async (req, res) => {

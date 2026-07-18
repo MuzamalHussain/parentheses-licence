@@ -1,0 +1,36 @@
+const SettingsCache = require("./SettingsCache");
+const Validators = require("./SettingValidators");
+const SettingsEncryptionProvider = require("./SettingsEncryptionProvider");
+const { SettingNotFound, InvalidSetting, ImportFailed, ExportFailed } = require("./errors");
+
+class SettingsService {
+  constructor({ repository, definitions, cache = new SettingsCache(), encryption = new SettingsEncryptionProvider(), env = process.env } = {}) {
+    if (!repository || !definitions) throw new TypeError("SettingsService requires repository and definition registry.");
+    this.repository = repository; this.definitions = definitions; this.cache = cache; this.encryption = encryption; this.env = env; this.overrides = new Map();
+  }
+  definition(key) { const definition = this.definitions.get(key); if (!definition) throw new SettingNotFound(key); return definition; }
+  resolveStored(record, definition) { if (!record) return undefined; return definition.encrypted ? this.encryption.decrypt(record.encryptedValue) : record.value; }
+  resolveFallback(definition) { if (definition.envKey && this.env[definition.envKey] !== undefined && this.env[definition.envKey] !== "") return { value: Validators.validate(definition, this.env[definition.envKey]), source: "environment" }; return { value: Validators.validate(definition, definition.default), source: "default" }; }
+  async get(key, { withMetadata = false, bypassCache = false } = {}) {
+    const definition = this.definition(key);
+    if (this.overrides.has(key)) { const value = this.overrides.get(key); return withMetadata ? { key, value, source: "override", definition } : value; }
+    if (!bypassCache) { const cached = this.cache.get(key); if (cached) return withMetadata ? cached : cached.value; }
+    const record = await this.repository.findByKey(key);
+    const resolved = record ? { value: Validators.validate(definition, this.resolveStored(record, definition)), source: "database", version: record.version } : this.resolveFallback(definition);
+    const result = { key, ...resolved, definition }; this.cache.set(key, result, definition.group); return withMetadata ? result : result.value;
+  }
+  async has(key) { if (!this.definitions.has(key)) return false; const resolved = await this.get(key, { withMetadata: true }); return resolved.value !== undefined && resolved.value !== null; }
+  async set(key, value, context = {}) { const definition = this.definition(key); if (!definition.editable) throw new InvalidSetting(key, `Setting '${key}' is not editable.`); const previous = await this.get(key, { withMetadata: true }); const validated = Validators.validate(definition, value); const record = { key, group: definition.group, encrypted: definition.encrypted, value: definition.encrypted ? null : validated, encryptedValue: definition.encrypted ? this.encryption.encrypt(validated) : null, metadata: context.metadata || {} }; const result = await this.repository.upsert(record, context); this.cache.invalidate(key); await this.repository.audit(context.auditEvent || (result.created ? "setting.created" : "setting.updated"), { key, group: definition.group, actorId: context.actorId, requestId: context.requestId, ip: context.ip, version: result.record.version, metadata: { ...(context.auditMetadata || {}), oldValue: definition.encrypted ? this.encryption.mask(previous.value) : previous.value, newValue: definition.encrypted ? this.encryption.mask(validated) : validated } }); return validated; }
+  async remove(key, context = {}) { const definition = this.definition(key); const removed = await this.repository.remove(key, context); this.overrides.delete(key); this.cache.invalidate(key); if (removed) await this.repository.audit("setting.deleted", { key, group: definition.group, actorId: context.actorId, requestId: context.requestId, ip: context.ip, version: removed.version }); return Boolean(removed); }
+  setOverride(key, value) { const definition = this.definition(key); const validated = Validators.validate(definition, value); this.overrides.set(key, validated); this.cache.invalidate(key); return validated; }
+  removeOverride(key) { this.cache.invalidate(key); return this.overrides.delete(key); }
+  async getMany(keys, options = {}) { const values = {}; await Promise.all(keys.map(async (key) => { values[key] = await this.get(key, options); })); return values; }
+  async getGroup(group, options = {}) { const definitions = this.definitions.getGroup(group); const values = {}; await Promise.all(definitions.map(async ({ key }) => { values[key] = await this.get(key, options); })); return values; }
+  clearCache({ group, keys, context = {} } = {}) { const count = group ? this.cache.invalidateGroup(group) : keys ? this.cache.invalidateMany(keys) : this.cache.clear(); this.repository.audit("setting.cache.cleared", { group: group || "", actorId: context.actorId, metadata: { keys: keys || [], count } }).catch(() => {}); return count; }
+  async reload({ group, keys, context = {} } = {}) { this.clearCache({ group, keys, context }); const selected = keys || (group ? this.definitions.getGroup(group).map((item) => item.key) : this.definitions.list().map((item) => item.key)); const result = await this.getMany(selected, { withMetadata: true, bypassCache: true }); await this.repository.audit("setting.reload", { group: group || "", actorId: context.actorId, metadata: { count: selected.length } }); return result; }
+  async export({ groups, includeSecrets = false, context = {} } = {}) { try { const definitions = this.definitions.list().filter((item) => !groups || groups.includes(item.group)); const settings = {}; for (const definition of definitions) { const result = await this.get(definition.key, { withMetadata: true }); settings[definition.key] = { value: definition.encrypted && !includeSecrets ? this.encryption.mask(result.value) : result.value, source: result.source, version: result.version || null, encrypted: definition.encrypted }; } await this.repository.audit("setting.exported", { actorId: context.actorId, metadata: { groups: groups || [], includeSecrets, count: definitions.length } }); return { schemaVersion: 1, exportedAt: new Date().toISOString(), settings }; } catch (error) { throw new ExportFailed("Runtime settings export failed.", { cause: error.message }); } }
+  async import(payload, context = {}) { if (payload?.schemaVersion !== 1 || !payload.settings || typeof payload.settings !== "object") throw new ImportFailed("Unsupported or invalid settings import payload."); const validated = []; try { for (const [key, item] of Object.entries(payload.settings)) { const definition = this.definition(key); if (!definition.editable || (definition.encrypted && /^\*+$/.test(String(item.value)))) continue; validated.push([key, Validators.validate(definition, item.value)]); } } catch (error) { throw new ImportFailed("Settings import validation failed.", { cause: error.message }); } for (const [key, value] of validated) await this.set(key, value, { ...context, metadata: { ...(context.metadata || {}), imported: true } }); await this.repository.audit("setting.imported", { actorId: context.actorId, metadata: { count: validated.length } }); return { imported: validated.length };
+  }
+  cacheStats() { return this.cache.stats(); }
+}
+module.exports = SettingsService;

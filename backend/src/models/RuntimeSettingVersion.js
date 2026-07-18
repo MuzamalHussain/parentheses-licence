@@ -1,0 +1,4 @@
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema({ key: { type: String, required: true, index: true }, group: { type: String, required: true }, version: { type: Number, required: true }, operation: { type: String, enum: ["create", "update", "delete", "import"], required: true }, value: { type: mongoose.Schema.Types.Mixed, default: null }, encryptedValue: { type: mongoose.Schema.Types.Mixed, default: null, select: false }, encrypted: { type: Boolean, default: false }, actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }, metadata: { type: mongoose.Schema.Types.Mixed, default: {} } }, { timestamps: true, collection: "runtime_setting_versions" });
+schema.index({ key: 1, version: -1 }, { unique: true });
+module.exports = mongoose.model("RuntimeSettingVersion", schema);

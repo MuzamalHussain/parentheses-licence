@@ -4,7 +4,6 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const compression = require("compression");
 const cookieParser = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
 const { errorHandler } = require("./utils/errorHandler");
 const { getConfig } = require("./config/env");
 const apiSecurityConfig = require("./config/apiSecurity");
@@ -19,6 +18,9 @@ const healthRoutes = require("./routes/health");
 const { trackRequest } = require("./services/ShutdownCoordinator");
 const TraceManager = require("./services/observability/TraceManager");
 const ZeroTrust = require("./services/security/ZeroTrustManager");
+const RuntimeSecurity = require("./middleware/runtimeSecurity");
+const SecurityRuntime = require("./services/security/SecurityRuntime");
+const { maintenanceGuard } = require("./middleware/featureFlagRuntime");
 
 const app = express();
 const config = getConfig();
@@ -26,6 +28,7 @@ const config = getConfig();
 // Trust first proxy hop (needed behind nginx/Render/Railway for correct req.ip,
 // secure cookies, and rate-limit keys to work correctly)
 app.set("trust proxy", 1);
+app.use(RuntimeSecurity.load);
 
 // ── Security headers ──────────────────────────────────────────────────────────
 // Default helmet() covers the essentials (X-Content-Type-Options, X-Frame-Options,
@@ -51,6 +54,9 @@ app.use((req, res, next) => {
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
   next();
 });
+app.use(RuntimeSecurity.headers);
+app.use(RuntimeSecurity.protectIp);
+app.use(maintenanceGuard);
 
 // ── Response compression ──────────────────────────────────────────────────────
 app.use(compression());
@@ -64,19 +70,21 @@ app.use(apiAuditLogger);
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // Support a comma-separated list so both the customer portal/admin panel
 // origin and (if hosted separately) the marketing site can call the API.
-const allowedOrigins = config.cors.allowedOrigins;
-
 app.use(
-  cors({
+  cors((req, optionsCallback) => { const corsPolicy = SecurityRuntime.value("security.cors", { allowedOrigins: config.cors.allowedOrigins, allowedMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"], exposedHeaders: ["X-Request-Id"], credentials: true, preflightCacheSeconds: 600 }); optionsCallback(null, {
     origin: (origin, callback) => {
       // Allow non-browser tools (curl, the WordPress plugin, server-to-server) with no Origin header
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (corsPolicy.allowedOrigins.includes(origin)) return callback(null, true);
       return callback(null, false);
     },
-    credentials: true,
+    credentials: corsPolicy.credentials,
+    methods: corsPolicy.allowedMethods,
+    allowedHeaders: corsPolicy.allowedHeaders,
+    exposedHeaders: corsPolicy.exposedHeaders,
+    maxAge: corsPolicy.preflightCacheSeconds,
     optionsSuccessStatus: 204,
-  })
+  }); })
 );
 
 // ── Body parsers ──────────────────────────────────────────────────────────────
@@ -103,15 +111,7 @@ if (config.app.isDevelopment) app.use(morgan("dev"));
 // ── Global rate limiter ───────────────────────────────────────────────────────
 // Second layer of defense — individual routers (auth, plugin activation) also
 // apply their own tighter limiters. This one is the overall ceiling per IP.
-app.use(
-  rateLimit({
-    windowMs: apiSecurityConfig.rateLimits.global.windowMs,
-    max: apiSecurityConfig.rateLimits.global.max,
-    message: (req) => ({ success: false, message: "Too many requests. Please slow down.", requestId: req.id }),
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+app.use(RuntimeSecurity.rate("api"));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.use(healthRoutes);
@@ -145,6 +145,7 @@ app.use("/api/v1/admin/downloads",     require("./routes/adminDownloads"));
 app.use("/api/v1/admin/notifications", require("./routes/adminNotifications"));
 app.use("/api/v1/admin/settings",      require("./routes/adminSettings"));
 app.use("/api/v1/admin/diagnostics",   require("./routes/adminDiagnostics"));
+app.use("/api/v1/admin/configuration", require("./routes/adminConfiguration"));
 app.use("/api/v1/admin/operations",    require("./routes/adminOperations"));
 app.use("/api/v1/admin/infrastructure", require("./routes/adminInfrastructure"));
 app.use("/api/v1/admin/performance",   require("./routes/adminPerformance"));

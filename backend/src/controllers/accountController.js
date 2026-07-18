@@ -64,7 +64,7 @@ exports.changePassword = asyncHandler(async (req, res) => {
   const previousSessionCount = user.refreshSessions?.length || 0;
 
   const identityPolicy = await EnterpriseIdentityService.resolvePolicy(user.activeOrganizationId);
-  const passwordCheck = EnterpriseIdentityService.validatePassword(newPassword, identityPolicy.password, user.passwordHistory || []);
+  const passwordCheck = EnterpriseIdentityService.validatePassword(newPassword, identityPolicy.password, user.passwordHistory || [], `${user.name} ${user.email}`);
   if (!passwordCheck.valid) throw new AppError(passwordCheck.errors[0], 422);
 
   const previousHash = user.passwordHash;

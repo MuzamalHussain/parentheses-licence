@@ -1,12 +1,12 @@
 const Stripe = require("stripe");
 const crypto = require("crypto");
-const IntegrationManager = require("./integrations/IntegrationManager");
+const PaymentCenter = require("./PaymentCenterService");
 const apiSecurityConfig = require("../config/apiSecurity");
 
 let cached = { fingerprint: "", client: null };
 
 async function stripeConfiguration() {
-  const config = await IntegrationManager.resolveConfiguration("stripe");
+  const config = await PaymentCenter.resolve("stripe");
   if (!config.secretKey) {
     const error = new Error("Stripe is not configured.");
     error.code = "PROVIDER_NOT_CONFIGURED";

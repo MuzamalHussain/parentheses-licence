@@ -41,8 +41,9 @@ function registerDefaultProviders(registry) {
     { id: "groq", name: "Groq", defaultBaseUrl: "https://api.groq.com/openai/v1", capabilities: ["chat"] },
     { id: "ollama", name: "Ollama", defaultBaseUrl: "http://localhost:11434", capabilities: ["chat", "embeddings"] },
     { id: "openrouter", name: "OpenRouter", defaultBaseUrl: "https://openrouter.ai/api/v1", capabilities: ["chat", "reasoning", "vision"] },
+    { id: "deepseek", name: "DeepSeek", defaultBaseUrl: "https://api.deepseek.com", capabilities: ["chat", "reasoning"] },
     { id: "azure_openai", name: "Azure OpenAI", defaultBaseUrl: "", capabilities: ["chat", "reasoning", "embeddings", "vision"] },
-    { id: "future", name: "Future Providers", defaultBaseUrl: "", capabilities: ["future"] },
+    { id: "local_ai", name: "Local AI", defaultBaseUrl: "http://localhost:8080/v1", capabilities: ["chat", "embeddings"] },
   ].forEach((definition) => registry.register(new AIProviderInterface(definition)));
 }
 

@@ -131,10 +131,10 @@ async function startServer() {
     enabled: config.email.enabled,
     smtp: diagnostics.checks.smtp,
   });
-  logInfo("startup.scheduler.complete", {
-    enabled: false,
-    reason: "no startup scheduler configured",
-  });
+  const HealthService = require("./services/health/HealthService");
+  HealthService.startScheduler();
+  HealthService.runAll({ force: true }).catch((error) => logError("health.initial_check.failed", { error }));
+  logInfo("startup.scheduler.complete", { enabled: true, intervalMs: HealthService.intervalMs, checks: HealthService.checks.size });
   logInfo("startup.diagnostics.complete", {
     status: diagnostics.status,
     environment: diagnostics.checks.environment,

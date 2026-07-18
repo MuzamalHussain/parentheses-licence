@@ -7,9 +7,9 @@ function buildTransportOptions(config) {
     secure: config.email.secure,
     requireTLS: config.email.requireTLS,
     auth: { user: config.email.user, pass: config.email.pass },
-    connectionTimeout: config.email.timeoutMs,
-    greetingTimeout: config.email.timeoutMs,
-    socketTimeout: config.email.timeoutMs,
+    connectionTimeout: config.email.connectionTimeout || config.email.timeoutMs,
+    greetingTimeout: config.email.greetingTimeout || config.email.timeoutMs,
+    socketTimeout: config.email.socketTimeout || config.email.timeoutMs,
   };
 }
 

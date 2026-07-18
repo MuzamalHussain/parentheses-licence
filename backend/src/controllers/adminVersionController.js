@@ -1,4 +1,5 @@
 const asyncHandler = require("express-async-handler");
+const FeatureFlags = require("../services/featureFlags/FeatureFlagService");
 const crypto = require("crypto");
 const fs = require("fs");
 const PluginVersion = require("../models/PluginVersion");
@@ -195,6 +196,7 @@ exports.uploadVersion = asyncHandler(async (req, res) => {
   }
 
   const config = getConfig();
+  const strictUploadSecurity = await FeatureFlags.isEnabled("security.plugin_upload_strict", { role: req.user?.role, userId: req.user?._id, ip: req.ip });
   let validation;
   try {
     validation = validatePluginZip(req.file.path, {
@@ -220,7 +222,7 @@ exports.uploadVersion = asyncHandler(async (req, res) => {
   } catch (err) {
     if (!(err instanceof ZipValidationError)) throw err;
 
-    logUploadValidation(config.features.ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT ? "rejected" : "warned", {
+    logUploadValidation(strictUploadSecurity ? "rejected" : "warned", {
       productId: req.params.productId,
       versionNumber,
       reasonCode: err.code,
@@ -228,7 +230,7 @@ exports.uploadVersion = asyncHandler(async (req, res) => {
       validator: err.metadata || {},
     });
 
-    if (config.features.ENABLE_PLUGIN_UPLOAD_SECURITY_STRICT) {
+    if (strictUploadSecurity) {
       fs.unlink(req.file.path, () => {});
       throw new AppError(err.message, err.statusCode || 422);
     }
