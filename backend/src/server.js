@@ -8,6 +8,8 @@ const ENV_KEYS = [
   "PORT",
   "CLIENT_URL",
   "CORS_ORIGIN",
+  "FRONTEND_URL",
+  "ALLOWED_ORIGINS",
   "MONGO_URI",
   "MONGO_DB_NAME",
   "DNS_SERVERS",
@@ -123,6 +125,9 @@ async function startServer() {
   logInfo("startup.routes.begin");
   const app = require("./app");
   logInfo("startup.routes.complete");
+  const CorsPolicyResolver = require("./services/security/CorsPolicyResolver");
+  const bootstrapCors = CorsPolicyResolver.resolve();
+  logInfo("startup.cors.effective", { source: bootstrapCors.source, allowedOrigins: bootstrapCors.allowedOrigins, credentials: bootstrapCors.credentials, allowedMethods: bootstrapCors.allowedMethods, allowedHeaders: bootstrapCors.allowedHeaders });
 
   logInfo("startup.diagnostics.begin");
   const { runStartupDiagnostics } = require("./services/productionReadinessService");

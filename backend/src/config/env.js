@@ -39,6 +39,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   CLIENT_URL: stringWithDefault("http://localhost:5173"),
   CORS_ORIGIN: optionalString,
+  FRONTEND_URL: optionalString,
+  ALLOWED_ORIGINS: optionalString,
   APP_ENCRYPTION_KEY: optionalString,
 
   MONGO_URI: z.string().min(1, "MONGO_URI is required"),
@@ -151,7 +153,7 @@ function buildConfig() {
   }
 
   const env = parsed.data;
-  const clientOrigins = splitOrigins(env.CLIENT_URL, env.CORS_ORIGIN);
+  const clientOrigins = splitOrigins(env.CLIENT_URL, env.CORS_ORIGIN, env.FRONTEND_URL, env.ALLOWED_ORIGINS);
 
   return {
     app: {

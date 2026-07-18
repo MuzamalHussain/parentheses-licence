@@ -17,6 +17,7 @@
     "test:phase16h": "node tests/phase16h-feature-flags.test.js",
     "test:phase16i": "node tests/phase16i-health-monitoring.test.js",
     "test:phase16j": "node tests/phase16j-configuration-management.test.js",
+    "test:cors-regression": "node tests/phase16-cors-production-regression.test.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "build": "node scripts/verify-backend-build.js",
