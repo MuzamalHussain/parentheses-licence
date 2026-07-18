@@ -60,12 +60,14 @@ const envSchema = z.object({
 
   SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: optionalString,
+  SMTP_SECURE: booleanEnv(false),
+  SMTP_REQUIRE_TLS: booleanEnv(false),
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
   SMTP_FROM: optionalString,
   SMTP_REPLY_TO: optionalString,
   EMAIL_PROVIDER: stringWithDefault("smtp"),
+  EMAIL_ENABLED: optionalString,
   EMAIL_RETRY_COUNT: z.coerce.number().int().min(0).default(2),
   EMAIL_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   STARTUP_VERIFY_SMTP: booleanEnv(false),
@@ -185,7 +187,8 @@ function buildConfig() {
       provider: env.EMAIL_PROVIDER,
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
-      secure: env.SMTP_SECURE === undefined ? env.SMTP_PORT === 465 : String(env.SMTP_SECURE).toLowerCase() === "true",
+      secure: env.SMTP_SECURE,
+      requireTLS: env.SMTP_REQUIRE_TLS,
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
       from: env.SMTP_FROM,
@@ -193,7 +196,9 @@ function buildConfig() {
       retryCount: env.EMAIL_RETRY_COUNT,
       timeoutMs: env.EMAIL_TIMEOUT_MS,
       verifyOnStartup: env.STARTUP_VERIFY_SMTP,
-      enabled: Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM),
+      enabled: env.EMAIL_ENABLED === undefined
+        ? Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM)
+        : String(env.EMAIL_ENABLED).toLowerCase() === "true",
     },
     storage: {
       provider: env.STORAGE_PROVIDER,

@@ -3,7 +3,8 @@ const { createNotificationRegistry } = require("./notifications/NotificationRegi
 const TemplateService = require("./notifications/NotificationTemplateService");
 const PreferenceService = require("./notifications/NotificationPreferenceService");
 const { writeAuditLog } = require("../utils/auditLog");
-const { logInfo, logWarn } = require("../utils/logger");
+const { logInfo, logWarn, logError } = require("../utils/logger");
+const { resolveEmailConfig } = require("./notifications/EmailConfigResolver");
 
 let providerOverride = null;
 let loggerOverride = null;
@@ -115,7 +116,7 @@ async function notify(type, options = {}) {
     channels = ["email"],
     actor = null,
   } = options;
-  const config = getConfig();
+  const config = await resolveEmailConfig(getConfig());
   const registry = createNotificationRegistry(config, providerOverride);
   const results = [];
 
@@ -170,15 +171,25 @@ async function notify(type, options = {}) {
 }
 
 async function verifyEmailProvider() {
-  const config = getConfig();
+  const config = await resolveEmailConfig(getConfig());
   const registry = createNotificationRegistry(config, providerOverride);
   const provider = registry.get("email");
   const startedAt = Date.now();
+  logInfo("email.smtp_verify_started", { source: config.email.source, host: config.email.host, port: config.email.port });
   try {
     const result = await provider.verify();
+    logInfo("email.smtp_verify_succeeded", { source: config.email.source, durationMs: Date.now() - startedAt });
     return { ...result, durationMs: Date.now() - startedAt };
   } catch (err) {
-    return { success: false, provider: provider.name, error: err.message, durationMs: Date.now() - startedAt };
+    logError("email.smtp_verify_failed", {
+      name: err.name,
+      code: err.code,
+      command: err.command,
+      responseCode: err.responseCode,
+      response: String(err.response || err.message || "SMTP verification failed").slice(0, 300),
+      stack: err.stack,
+    });
+    return { success: false, provider: provider.name, error: err.message, code: err.code, durationMs: Date.now() - startedAt };
   }
 }
 

@@ -1,5 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const IntegrationManager = require("../services/integrations/IntegrationManager");
+const notificationService = require("../services/notificationService");
 
 exports.getIntegrations = asyncHandler(async (req, res) => {
   const [integrations, health] = await Promise.all([
@@ -57,4 +58,15 @@ exports.testConnection = asyncHandler(async (req, res) => {
 
 exports.getApiCapabilities = asyncHandler(async (req, res) => {
   res.json({ success: true, data: IntegrationManager.api.getDocumentationMetadata(), requestId: req.id });
+});
+
+exports.sendSmtpTestEmail = asyncHandler(async (req, res) => {
+  const result = await notificationService.sendTestEmail(req.body.to);
+  if (!result?.success || (!result.messageId && !result.accepted)) {
+    const error = new Error("SMTP test email was not accepted by the configured transport.");
+    error.code = result?.errorCode || "SMTP_TEST_FAILED";
+    error.statusCode = 502;
+    throw error;
+  }
+  res.json({ success: true, data: { messageId: result.messageId, provider: result.provider }, requestId: req.id });
 });

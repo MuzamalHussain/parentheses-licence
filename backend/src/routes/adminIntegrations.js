@@ -14,6 +14,7 @@ const configureSchema = z.object({
 });
 
 const enabledSchema = z.object({ enabled: z.boolean() });
+const smtpTestSchema = z.object({ to: z.string().trim().email() });
 
 router.use(requireAuth, requireRole("admin"));
 
@@ -22,5 +23,6 @@ router.get("/api-capabilities", c.getApiCapabilities);
 router.post("/:providerId/configure", validateRequest({ params: providerParamSchema, body: configureSchema }), c.configureIntegration);
 router.post("/:providerId/enabled", validateRequest({ params: providerParamSchema, body: enabledSchema }), c.setEnabled);
 router.post("/:providerId/test", validateRequest({ params: providerParamSchema }), c.testConnection);
+router.post("/smtp/test-email", validateRequest({ body: smtpTestSchema }), c.sendSmtpTestEmail);
 
 module.exports = router;

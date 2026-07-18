@@ -20,6 +20,7 @@ function shouldRedact(key = "") {
 }
 
 function sanitizeLogData(value, key = "") {
+  if (/configured$/i.test(String(key)) && typeof value === "boolean") return value;
   if (shouldRedact(key)) return "[REDACTED]";
   if (value instanceof Error) {
     return {
